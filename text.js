@@ -12,10 +12,10 @@ H5P.AdvancedTextPapiJo = (function ($, EventDispatcher) {
     var self = this;    
     EventDispatcher.call(this);
 
-  // Add <div style="overflow-x:auto;"> around table to make it responsive
+  // Add <div style="overflow-x:auto;"> around tables (if any) to make them responsive
     if (parameters.text.search('<table') !== -1) {
-      parameters.text = parameters.text.replace('<table', '<div style="overflow-x:auto; padding-bottom: 0.6em;"><table');
-      parameters.text = parameters.text.replace('</table>', '</table></div>');
+      parameters.text = parameters.text.replaceAll('<table', '<div style="overflow-x:auto; padding-bottom: 0.6em;"><table');
+      parameters.text = parameters.text.replaceAll('</table>', '</table></div>');
     }
 
     var html = (parameters.text === undefined ? '<em>New text</em>' : parameters.text);
