@@ -1,8 +1,11 @@
-H5P Advanced Text
-==========
+# H5P Advanced Text Papi Jo
 
-A simple library for displaying text with advanced styling.
-Useful when the editor dynamially add texts to other content.
+An enhanced version of the H5P Advanced Text library, with support for
+author-defined tooltips and additional text presentation features.
+
+Tooltips can be created, edited, and removed directly in the H5P editor.
+Tooltip text supports a restricted set of inline formatting elements: `<em>`,
+`<strong>`, `<sup>`, `<sub>`, `<s>`, and `<br>`.
 
 ## H5P CLI development junctions
 
