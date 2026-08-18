@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AdvancedTextPapiJo Phase 1B CKEditor verification</title>
+  <script src="/jquery.js"></script>
+  <script>
+    window.H5PIntegration = { editor: { wysiwygButtons: [] } };
+    window.H5PEditor = {
+      $: window.H5P.jQuery,
+      widgets: {},
+      t: function () { return ''; }
+    };
+    window.ns = window.H5PEditor;
+  </script>
+  <script src="/ckeditor.js"></script>
+  <script src="/h5peditor-html.js"></script>
+  <script src="/advanced-text-papijo-tooltip-sanitizer.js"></script>
+  <script src="/advanced-text-papijo-tooltip.js"></script>
+</head>
+<body>
+  <div id="fixture"></div>
+  <pre id="result">RUNNING</pre>
+  <script>
+    (async function () {
+      const fieldDefinition = (await fetch('/semantics.json').then(function (response) {
+        return response.json();
+      }))[0];
+      const fixture = document.getElementById('fixture');
+      const results = [];
+
+      function assert(condition, message) {
+        if (!condition) {
+          throw new Error(message);
+        }
+      }
+
+      function collectTextContainers(node, containers) {
+        const children = Array.from(node.getChildren ? node.getChildren() : []);
+        if (children.some(function (child) { return child.is('$text'); })) {
+          containers.push(node);
+        }
+        children.forEach(function (child) {
+          if (child.getChildren) {
+            collectTextContainers(child, containers);
+          }
+        });
+      }
+
+      function getTextContainers(editor) {
+        const containers = [];
+        collectTextContainers(editor.model.document.getRoot(), containers);
+        return containers;
+      }
+
+      function setSelection(editor, startContainer, startOffset, endContainer, endOffset) {
+        editor.model.change(function (writer) {
+          writer.setSelection(writer.createRange(
+            writer.createPositionAt(startContainer, startOffset),
+            writer.createPositionAt(endContainer, endOffset)
+          ));
+        });
+      }
+
+      async function openEditor(html) {
+        fixture.innerHTML = '<div class="widget-shell"><div class="editor-host"></div></div>';
+        const shell = fixture.querySelector('.widget-shell');
+        const host = fixture.querySelector('.editor-host');
+        host.innerHTML = html;
+        const field = JSON.parse(JSON.stringify(fieldDefinition));
+        let saved;
+        const widget = new H5PEditor.AdvancedTextPapiJoTooltip(
+          {}, field, html, function (_field, value) { saved = value; }
+        );
+        const editor = await ClassicEditor.create(host, widget.getCKEditorConfig());
+        widget.ckeditor = editor;
+        widget.$input = window.H5P.jQuery(host);
+        widget.$errors = window.H5P.jQuery('<div>');
+        widget.$item = window.H5P.jQuery(shell);
+        return {
+          editor: editor,
+          getSaved: function () { return saved; },
+          host: host,
+          widget: widget
+        };
+      }
+
+      async function closeEditor(context) {
+        await context.editor.destroy();
+        fixture.innerHTML = '';
+      }
+
+      async function createWithSelection(name, html, range, tooltipText, verify) {
+        const context = await openEditor(html);
+        const containers = getTextContainers(context.editor);
+        const startContainer = containers[range[0]];
+        const endContainer = containers[range[2]];
+        setSelection(context.editor, startContainer, range[1], endContainer, range[3]);
+        const result = context.editor.execute('createPapijoTooltip', {
+          tooltipText: tooltipText
+        });
+        const output = context.editor.getData();
+        verify(result, output, context, containers);
+        results.push({ name: name, output: output, commandResult: result });
+        await closeEditor(context);
+      }
+
+      try {
+        await createWithSelection(
+          'one word',
+          '<p>One word here</p>',
+          [0, 4, 0, 8],
+          'Explanation',
+          function (result, output) {
+            assert(result.valid, 'One-word selection was rejected');
+            assert(output === '<p>One <span class="papijo-tooltip" data-papijo-tooltip="Explanation">word</span> here</p>', 'One-word output mismatch: ' + output);
+          }
+        );
+
+        await createWithSelection(
+          'multiple words',
+          '<p>Select several words now</p>',
+          [0, 7, 0, 20],
+          'Several words',
+          function (result, output) {
+            assert(result.valid, 'Multi-word selection was rejected');
+            assert(output.includes('>several words<'), 'Multi-word text was not preserved: ' + output);
+          }
+        );
+
+        await createWithSelection(
+          'strong formatting',
+          '<p>selected <strong>formatted</strong> phrase</p>',
+          [0, 0, 0, 25],
+          'Formatted selection',
+          function (result, output) {
+            assert(result.valid, 'Formatted selection was rejected');
+            assert(output === '<p><span class="papijo-tooltip" data-papijo-tooltip="Formatted selection">selected <strong>formatted</strong> phrase</span></p>', 'Strong formatting was not preserved: ' + output);
+          }
+        );
+
+        await createWithSelection(
+          'link formatting',
+          '<p>Select <a href="https://example.com" target="_blank" rel="noopener noreferrer">linked words</a> now</p>',
+          [0, 7, 0, 19],
+          'Link selection',
+          function (result, output) {
+            assert(result.valid, 'Link selection was rejected');
+            assert(output.includes('<a href="https://example.com"'), 'Link was removed: ' + output);
+            assert(output.includes('data-papijo-tooltip="Link selection"'), 'Tooltip annotation missing from link selection');
+          }
+        );
+
+        await createWithSelection(
+          'empty selection rejected',
+          '<p>No selection</p>',
+          [0, 2, 0, 2],
+          'Rejected',
+          function (result, output) {
+            assert(result.valid === false, 'Collapsed selection was accepted');
+            assert(output === '<p>No selection</p>', 'Collapsed selection changed content');
+          }
+        );
+
+        await createWithSelection(
+          'cross paragraph rejected',
+          '<p>First paragraph</p><p>Second paragraph</p>',
+          [0, 2, 1, 6],
+          'Rejected',
+          function (result, output) {
+            assert(result.valid === false, 'Cross-paragraph selection was accepted');
+            assert(!output.includes('papijo-tooltip'), 'Cross-paragraph rejection modified content');
+          }
+        );
+
+        await createWithSelection(
+          'cross list item rejected',
+          '<ul><li>First item</li><li>Second item</li></ul>',
+          [0, 2, 1, 6],
+          'Rejected',
+          function (result, output) {
+            assert(result.valid === false, 'Cross-list-item selection was accepted');
+            assert(!output.includes('papijo-tooltip'), 'Cross-list-item rejection modified content');
+          }
+        );
+
+        await createWithSelection(
+          'cross table cell rejected',
+          '<table><tbody><tr><td>First cell</td><td>Second cell</td></tr></tbody></table>',
+          [0, 2, 1, 6],
+          'Rejected',
+          function (result, output, context, containers) {
+            const containerInfo = containers.map(function (container) {
+              return container.name + ':' + Array.from(container.getChildren()).map(function (child) {
+                return child.data || child.name;
+              }).join('|');
+            });
+            assert(result.valid === false, 'Cross-table-cell selection was accepted: ' + JSON.stringify(containerInfo) + ' / ' + output);
+            assert(!output.includes('papijo-tooltip'), 'Cross-table-cell rejection modified content');
+          }
+        );
+
+        const existing = '<p>One <span class="papijo-tooltip" data-papijo-tooltip="Existing">tooltip</span> here</p>';
+        await createWithSelection(
+          'inside existing tooltip rejected', existing, [0, 5, 0, 9], 'Rejected',
+          function (result, output) {
+            assert(result.valid === false, 'Selection inside tooltip was accepted');
+            assert((output.match(/class="papijo-tooltip"/g) || []).length === 1, 'Existing tooltip was changed');
+          }
+        );
+
+        await createWithSelection(
+          'partial tooltip overlap rejected', existing, [0, 2, 0, 8], 'Rejected',
+          function (result, output) {
+            assert(result.valid === false, 'Partially overlapping selection was accepted');
+            assert((output.match(/class="papijo-tooltip"/g) || []).length === 1, 'Partial overlap changed content');
+          }
+        );
+
+        await createWithSelection(
+          'selection containing tooltip rejected', existing, [0, 0, 0, 16], 'Rejected',
+          function (result, output) {
+            assert(result.valid === false, 'Selection containing tooltip was accepted');
+            assert((output.match(/class="papijo-tooltip"/g) || []).length === 1, 'Containing selection changed content');
+          }
+        );
+
+        await createWithSelection(
+          'adjacent tooltip allowed',
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="First">first</span> second</p>',
+          [0, 6, 0, 12],
+          'Second',
+          function (result, output) {
+            assert(result.valid, 'Adjacent tooltip creation was rejected');
+            assert((output.match(/class="papijo-tooltip"/g) || []).length === 2, 'Adjacent tooltip was not created: ' + output);
+          }
+        );
+
+        await createWithSelection(
+          'script-only tooltip rejected',
+          '<p>Safe text</p>',
+          [0, 0, 0, 4],
+          '<script>alert(1)<\/script>',
+          function (result, output) {
+            assert(result.valid === false, 'Script-only tooltip text was accepted');
+            assert(output === '<p>Safe text</p>', 'Rejected script changed content');
+          }
+        );
+
+        await createWithSelection(
+          'plain text attribute escaping',
+          '<p>Safe text</p>',
+          [0, 0, 0, 4],
+          'Fish & chips "quoted"',
+          function (result, output) {
+            assert(result.valid, 'Safe plain text was rejected');
+            assert(output.includes('data-papijo-tooltip="Fish &amp; chips &quot;quoted&quot;"'), 'Plain text was not safely attribute-encoded: ' + output);
+          }
+        );
+
+        const undoContext = await openEditor('<p>selected <strong>formatted</strong> phrase</p>');
+        const undoContainer = getTextContainers(undoContext.editor)[0];
+        setSelection(undoContext.editor, undoContainer, 0, undoContainer, 25);
+        const createResult = undoContext.editor.execute('createPapijoTooltip', {
+          tooltipText: 'Undo test'
+        });
+        const created = undoContext.editor.getData();
+        undoContext.editor.execute('undo');
+        const undone = undoContext.editor.getData();
+        undoContext.editor.execute('redo');
+        const redone = undoContext.editor.getData();
+        assert(createResult.valid, 'Undo test tooltip was not created');
+        assert(undone === '<p>selected <strong>formatted</strong> phrase</p>', 'Undo did not restore original content: ' + undone);
+        assert(redone === created, 'Redo did not restore tooltip: ' + redone);
+        results.push({ name: 'undo and redo', created: created, undone: undone, redone: redone });
+
+        const saved = undoContext.widget.validate();
+        await closeEditor(undoContext);
+        const reopenContext = await openEditor(saved);
+        const reopened = reopenContext.editor.getData();
+        assert(reopened === saved, 'Created tooltip did not survive save/reopen: ' + reopened);
+        results.push({ name: 'save and reopen after creation', saved: saved, reopened: reopened });
+        await closeEditor(reopenContext);
+
+        const uiContext = await openEditor('<p>Create from interface</p>');
+        const uiContainer = getTextContainers(uiContext.editor)[0];
+        setSelection(uiContext.editor, uiContainer, 7, uiContainer, 11);
+        uiContext.widget.addTooltipAuthoringControls();
+        uiContext.widget.$createTooltipButton.trigger(window.H5P.jQuery.Event('mousedown'));
+        uiContext.widget.$createTooltipButton.trigger('click');
+        assert(uiContext.widget.$tooltipForm.prop('hidden') === false, 'Create tooltip form did not open');
+        uiContext.widget.$tooltipInput.val('Interface tooltip');
+        uiContext.widget.$tooltipForm.trigger('submit');
+        const uiOutput = uiContext.editor.getData();
+        assert(uiOutput.includes('<span class="papijo-tooltip" data-papijo-tooltip="Interface tooltip">from</span>'), 'External UI did not preserve/apply the model selection: ' + uiOutput);
+        const restoredSelection = uiContext.editor.model.document.selection.getFirstRange();
+        assert(restoredSelection.start.offset === 7 && restoredSelection.end.offset === 11, 'External UI did not restore the model selection');
+        uiContext.editor.execute('undo');
+        const uiUndone = uiContext.editor.getData();
+        uiContext.editor.execute('redo');
+        const uiRedone = uiContext.editor.getData();
+        assert(uiUndone === '<p>Create from interface</p>', 'UI creation was not one undoable operation: ' + uiUndone);
+        assert(uiRedone === uiOutput, 'UI creation redo failed: ' + uiRedone);
+        results.push({
+          name: 'external authoring UI',
+          output: uiOutput,
+          undone: uiUndone,
+          redone: uiRedone
+        });
+        await closeEditor(uiContext);
+
+        const ordinaryContext = await openEditor('<p>Ordinary <strong>Advanced Text</strong> content.</p>');
+        const ordinary = ordinaryContext.editor.getData();
+        assert(ordinary === '<p>Ordinary <strong>Advanced Text</strong> content.</p>', 'Ordinary content changed');
+        results.push({ name: 'ordinary content unchanged', output: ordinary });
+        await closeEditor(ordinaryContext);
+
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'PASS',
+          count: results.length,
+          results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'pass';
+      }
+      catch (error) {
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'FAIL',
+          message: error.message,
+          stack: error.stack,
+          results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'fail';
+      }
+    })();
+  </script>
+</body>
+</html>

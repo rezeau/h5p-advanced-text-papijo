@@ -1,0 +1,15 @@
+.papijo-runtime-tooltip-trigger {
+  border-bottom: 0.08em dotted currentColor;
+  cursor: help;
+}
+
+.papijo-runtime-tooltip-trigger:focus {
+  outline: 0.15em solid currentColor;
+  outline-offset: 0.12em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .papijo-runtime-speech-bubble {
+    transition: none;
+  }
+}

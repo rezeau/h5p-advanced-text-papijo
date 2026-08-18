@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AdvancedTextPapiJo Phase 1C CKEditor verification</title>
+  <script src="/jquery.js"></script>
+  <script>
+    window.H5PIntegration = { editor: { wysiwygButtons: [] } };
+    window.H5PEditor = {
+      $: window.H5P.jQuery,
+      widgets: {},
+      language: {},
+      t: function (library, key) {
+        const translations = this.language[library];
+        return translations && translations.libraryStrings ?
+          translations.libraryStrings[key] : key;
+      }
+    };
+    window.ns = window.H5PEditor;
+  </script>
+  <script src="/ckeditor.js"></script>
+  <script src="/h5peditor-html.js"></script>
+  <script src="/advanced-text-papijo-tooltip-sanitizer.js"></script>
+  <script src="/advanced-text-papijo-tooltip.js"></script>
+</head>
+<body>
+  <div id="fixture"></div>
+  <pre id="result">RUNNING</pre>
+  <script>
+    (async function () {
+      const LIBRARY = 'H5PEditor.AdvancedTextPapiJoTooltip';
+      const [fieldDefinition, english, french] = await Promise.all([
+        fetch('/semantics.json').then(function (response) { return response.json(); }),
+        fetch('/language/en.json').then(function (response) { return response.json(); }),
+        fetch('/language/fr.json').then(function (response) { return response.json(); })
+      ]);
+      H5PEditor.language[LIBRARY] = english;
+      const fixture = document.getElementById('fixture');
+      const results = [];
+
+      function assert(condition, message) {
+        if (!condition) {
+          throw new Error(message);
+        }
+      }
+
+      function record(name, data) {
+        results.push(Object.assign({ name: name }, data || {}));
+      }
+
+      function collectTextContainers(node, containers) {
+        const children = Array.from(node.getChildren ? node.getChildren() : []);
+        if (children.some(function (child) { return child.is('$text'); })) {
+          containers.push(node);
+        }
+        children.forEach(function (child) {
+          if (child.getChildren) {
+            collectTextContainers(child, containers);
+          }
+        });
+      }
+
+      function getTextContainers(editor) {
+        const containers = [];
+        collectTextContainers(editor.model.document.getRoot(), containers);
+        return containers;
+      }
+
+      function setSelection(editor, start, end, startIndex, endIndex) {
+        const containers = getTextContainers(editor);
+        const startContainer = containers[startIndex || 0];
+        const endContainer = containers[endIndex || 0];
+        editor.model.change(function (writer) {
+          writer.setSelection(writer.createRange(
+            writer.createPositionAt(startContainer, start),
+            writer.createPositionAt(endContainer, end)
+          ));
+        });
+      }
+
+      function visibleText(html) {
+        const element = document.createElement('div');
+        element.innerHTML = html;
+        return element.textContent;
+      }
+
+      async function openEditor(html) {
+        fixture.innerHTML = '<div class="widget-shell"><div class="editor-host"></div></div>';
+        const shell = fixture.querySelector('.widget-shell');
+        const host = fixture.querySelector('.editor-host');
+        host.innerHTML = html;
+        let saved;
+        const widget = new H5PEditor.AdvancedTextPapiJoTooltip(
+          {}, JSON.parse(JSON.stringify(fieldDefinition[0])), html,
+          function (_field, value) { saved = value; }
+        );
+        const editor = await ClassicEditor.create(host, widget.getCKEditorConfig());
+        widget.ckeditor = editor;
+        widget.$input = window.H5P.jQuery(host);
+        widget.$errors = window.H5P.jQuery('<div>');
+        widget.$item = window.H5P.jQuery(shell);
+        return { editor, widget, getSaved: function () { return saved; } };
+      }
+
+      async function closeEditor(context) {
+        await context.editor.destroy();
+        fixture.innerHTML = '';
+      }
+
+      function detect(context) {
+        return H5PEditor.AdvancedTextPapiJoTooltip.detectExistingTooltip(
+          context.editor, context.editor.model.document.selection
+        );
+      }
+
+      const formattedTooltip = '<p>Before <span class="papijo-tooltip" data-papijo-tooltip="Old explanation">selected <strong>formatted</strong> words</span> after</p>';
+
+      try {
+        let context = await openEditor(formattedTooltip);
+        setSelection(context.editor, 12, 12);
+        let detection = detect(context);
+        assert(detection.valid && detection.text === 'Old explanation', 'Caret detection failed');
+        assert(detection.range.start.offset === 7 && detection.range.end.offset === 31, 'Caret did not expand to full tooltip');
+        context.widget.addTooltipAuthoringControls();
+        assert(context.widget.$createTooltipButton.prop('hidden'), 'Create remained visible inside tooltip');
+        assert(!context.widget.$editTooltipButton.prop('hidden'), 'Edit was not available inside tooltip');
+        assert(!context.widget.$removeTooltipButton.prop('hidden'), 'Remove was not available inside tooltip');
+        record('caret inside existing tooltip', { text: detection.text });
+
+        setSelection(context.editor, 10, 20);
+        detection = detect(context);
+        assert(detection.valid && detection.range.start.offset === 7 && detection.range.end.offset === 31, 'Partial selection detection failed');
+        record('partial selection inside one tooltip');
+
+        setSelection(context.editor, 7, 31);
+        assert(detect(context).valid, 'Full tooltip selection was not detected');
+        record('full tooltip selection');
+
+        setSelection(context.editor, 5, 10);
+        assert(!detect(context).valid, 'Cross-boundary selection was treated as editable');
+        record('cross-boundary selection rejected');
+        await closeEditor(context);
+
+        context = await openEditor('<p><span class="papijo-tooltip" data-papijo-tooltip="First">first</span><span class="papijo-tooltip" data-papijo-tooltip="Second">second</span></p>');
+        setSelection(context.editor, 2, 8);
+        assert(!detect(context).valid, 'Two adjacent tooltips were treated as one');
+        record('selection across adjacent tooltips rejected');
+        await closeEditor(context);
+
+        context = await openEditor(formattedTooltip);
+        setSelection(context.editor, 10, 20);
+        const beforeEditText = visibleText(context.editor.getData());
+        context.widget.addTooltipAuthoringControls();
+        context.widget.$editTooltipButton.trigger(window.H5P.jQuery.Event('mousedown'));
+        context.widget.$editTooltipButton.trigger('click');
+        assert(context.widget.$tooltipInput.val() === 'Old explanation', 'Edit form was not pre-filled');
+        context.widget.$tooltipInput.val('New explanation');
+        context.widget.$tooltipForm.trigger('submit');
+        let edited = context.editor.getData();
+        assert(edited.includes('data-papijo-tooltip="New explanation"'), 'Edit UI failed');
+        record('edit tooltip value', { output: edited });
+        assert(visibleText(edited) === beforeEditText, 'Edit changed visible text');
+        record('visible text unchanged after edit');
+        assert(edited.includes('<strong>formatted</strong>'), 'Edit removed strong formatting');
+        record('strong formatting preserved after edit');
+        context.editor.execute('undo');
+        const editUndone = context.editor.getData();
+        assert(editUndone.includes('data-papijo-tooltip="Old explanation"'), 'Undo edit did not restore metadata');
+        record('undo edit restores old metadata');
+        context.editor.execute('redo');
+        const editRedone = context.editor.getData();
+        assert(editRedone.includes('data-papijo-tooltip="New explanation"'), 'Redo edit failed');
+        record('redo restores edited metadata');
+        const editedSaved = context.widget.validate();
+        await closeEditor(context);
+        context = await openEditor(editedSaved);
+        assert(context.editor.getData().includes('data-papijo-tooltip="New explanation"'), 'Edited value did not survive reopen');
+        record('save and reopen after edit');
+        await closeEditor(context);
+
+        context = await openEditor('<p><span class="papijo-tooltip" data-papijo-tooltip="Old link"><a href="https://example.com">linked words</a></span></p>');
+        setSelection(context.editor, 2, 8);
+        let operation = context.editor.execute('editPapijoTooltip', { tooltipText: 'New link' });
+        edited = context.editor.getData();
+        assert(operation.valid && edited.includes('href="https://example.com"'), 'Edit removed link formatting');
+        record('link formatting preserved after edit', { output: edited });
+        setSelection(context.editor, 2, 8);
+        operation = context.editor.execute('editPapijoTooltip', { tooltipText: '<script>alert(1)<\/script>' });
+        assert(!operation.valid && context.editor.getData() === edited, 'Script-only edit was accepted');
+        record('script-only edit rejected');
+        await closeEditor(context);
+
+        const removable = '<p>Some <span class="papijo-tooltip" data-papijo-tooltip="Remove me">selected <strong>formatted</strong> <a href="https://example.com">words</a></span> here.</p>';
+        context = await openEditor(removable);
+        setSelection(context.editor, 8, 18);
+        const beforeRemoveText = visibleText(context.editor.getData());
+        context.widget.addTooltipAuthoringControls();
+        context.widget.$removeTooltipButton.trigger(window.H5P.jQuery.Event('mousedown'));
+        context.widget.$removeTooltipButton.trigger('click');
+        const removed = context.editor.getData();
+        assert(!removed.includes('papijo-tooltip'), 'Remove UI failed');
+        record('remove tooltip', { output: removed });
+        assert(visibleText(removed) === beforeRemoveText, 'Removal changed visible text');
+        record('visible text retained after remove');
+        assert(removed.includes('<strong>formatted</strong>'), 'Removal lost strong formatting');
+        record('strong formatting retained after remove');
+        assert(removed.includes('href="https://example.com"'), 'Removal lost link formatting');
+        record('link formatting retained after remove');
+        context.editor.execute('undo');
+        const removeUndone = context.editor.getData();
+        assert(removeUndone.includes('data-papijo-tooltip="Remove me"'), 'Undo removal failed');
+        record('undo removal restores tooltip');
+        context.editor.execute('redo');
+        const removeRedone = context.editor.getData();
+        assert(!removeRedone.includes('papijo-tooltip'), 'Redo removal failed');
+        record('redo removes tooltip again');
+        const removedSaved = context.widget.validate();
+        await closeEditor(context);
+        context = await openEditor(removedSaved);
+        assert(!context.editor.getData().includes('papijo-tooltip'), 'Removed tooltip returned after reopen');
+        assert(visibleText(context.editor.getData()) === beforeRemoveText, 'Reopen after removal changed text');
+        record('save and reopen after removal');
+        await closeEditor(context);
+
+        const adjacent = '<p><span class="papijo-tooltip" data-papijo-tooltip="First">first</span><span class="papijo-tooltip" data-papijo-tooltip="Second">second</span></p>';
+        context = await openEditor(adjacent);
+        setSelection(context.editor, 1, 3);
+        operation = context.editor.execute('removePapijoTooltip');
+        let isolated = context.editor.getData();
+        assert(operation.valid && !isolated.includes('data-papijo-tooltip="First"') && isolated.includes('data-papijo-tooltip="Second"'), 'Removing first tooltip affected second');
+        record('remove first adjacent tooltip independently');
+        setSelection(context.editor, 7, 9);
+        operation = context.editor.execute('editPapijoTooltip', { tooltipText: 'Changed second' });
+        isolated = context.editor.getData();
+        assert(operation.valid && isolated.includes('data-papijo-tooltip="Changed second"') && isolated.startsWith('<p>first'), 'Editing second tooltip affected first text');
+        record('edit second adjacent tooltip independently');
+        await closeEditor(context);
+
+        context = await openEditor('<p>Create new tooltip</p>');
+        setSelection(context.editor, 7, 10);
+        operation = context.editor.execute('createPapijoTooltip', { tooltipText: 'Created' });
+        assert(operation.valid && context.editor.getData().includes('data-papijo-tooltip="Created"'), 'Phase 1B creation regressed');
+        record('create tooltip regression');
+        await closeEditor(context);
+
+        context = await openEditor('<p>Empty selection</p>');
+        setSelection(context.editor, 2, 2);
+        operation = context.editor.execute('createPapijoTooltip', { tooltipText: 'Rejected' });
+        assert(!operation.valid && !context.editor.getData().includes('papijo-tooltip'), 'Empty creation regressed');
+        record('empty selection remains rejected');
+        await closeEditor(context);
+
+        context = await openEditor(formattedTooltip);
+        setSelection(context.editor, 5, 15);
+        operation = context.editor.execute('createPapijoTooltip', { tooltipText: 'Rejected' });
+        assert(!operation.valid, 'Overlap creation regressed');
+        record('nested and overlap creation remains rejected');
+        assert(context.editor.getData().includes('data-papijo-tooltip="Old explanation"'), 'Phase 1A serialization regressed');
+        record('Phase 1A serialization regression');
+        await closeEditor(context);
+
+        context = await openEditor('<p>Ordinary <strong>Advanced Text</strong> content.</p>');
+        assert(context.editor.getData() === '<p>Ordinary <strong>Advanced Text</strong> content.</p>', 'Ordinary content changed');
+        record('ordinary Advanced Text unchanged');
+        await closeEditor(context);
+
+        H5PEditor.language[LIBRARY] = english;
+        context = await openEditor('<p>English strings</p>');
+        context.widget.addTooltipAuthoringControls();
+        assert(context.widget.$createTooltipButton.text() === 'Create tooltip', 'English H5P translation did not load');
+        assert(context.widget.$editTooltipButton.text() === 'Edit tooltip', 'English edit translation did not load');
+        record('English strings through H5P translation mechanism');
+        await closeEditor(context);
+
+        H5PEditor.language[LIBRARY] = french;
+        context = await openEditor('<p>Chaînes françaises</p>');
+        context.widget.addTooltipAuthoringControls();
+        assert(context.widget.$createTooltipButton.text() === 'Créer une infobulle', 'French H5P translation did not load');
+        assert(context.widget.$removeTooltipButton.text() === 'Supprimer l’infobulle', 'French remove translation did not load');
+        record('French strings through H5P translation mechanism');
+        await closeEditor(context);
+
+        assert(results.length === 29, 'Expected 29 Phase 1C results, got ' + results.length);
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'PASS', count: results.length, results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'pass';
+      }
+      catch (error) {
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'FAIL', message: error.message, stack: error.stack,
+          count: results.length, results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'fail';
+      }
+    })();
+  </script>
+</body>
+</html>

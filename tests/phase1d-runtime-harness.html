@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AdvancedTextPapiJo Phase 1D runtime verification</title>
+  <link rel="stylesheet" href="/advanced-text-papijo-speech-bubble.css">
+  <link rel="stylesheet" href="/advanced-text-papijo-tooltip-runtime.css">
+  <style>
+    .runtime-box {
+      border: 1px solid transparent;
+      box-sizing: border-box;
+      margin: 1rem;
+      width: 36rem;
+    }
+    .runtime-box-narrow {
+      width: 11rem;
+    }
+  </style>
+  <script src="/jquery.js"></script>
+  <script>
+    window.H5P.EventDispatcher = function () {};
+    window.H5P.EventDispatcher.prototype = {};
+  </script>
+  <script src="/advanced-text-papijo-tooltip-sanitizer.js"></script>
+  <script src="/advanced-text-papijo-speech-bubble.js"></script>
+  <script src="/advanced-text-papijo-tooltip-runtime.js"></script>
+  <script src="/text.js"></script>
+</head>
+<body>
+  <div id="fixture"></div>
+  <button id="outside" type="button">Outside</button>
+  <pre id="result">RUNNING</pre>
+  <script>
+    (async function () {
+      const fixture = document.getElementById('fixture');
+      const results = [];
+      let nextId = 0;
+
+      function assert(condition, message) {
+        if (!condition) {
+          throw new Error(message);
+        }
+      }
+
+      function record(name, data) {
+        results.push(Object.assign({ name: name }, data || {}));
+      }
+
+      function wait() {
+        return new Promise(function (resolve) {
+          window.requestAnimationFrame(function () {
+            window.requestAnimationFrame(resolve);
+          });
+        });
+      }
+
+      function createInstance(html, narrow) {
+        const root = document.createElement('div');
+        root.id = 'runtime-' + (++nextId);
+        root.className = 'runtime-box' + (narrow ? ' runtime-box-narrow' : '');
+        fixture.appendChild(root);
+        const instance = new H5P.AdvancedTextPapiJo({ text: html }, nextId);
+        instance.attach(H5P.jQuery(root));
+        return { instance: instance, root: root };
+      }
+
+      function click(element) {
+        element.dispatchEvent(new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true
+        }));
+      }
+
+      function key(element, value) {
+        element.dispatchEvent(new KeyboardEvent('keydown', {
+          bubbles: true,
+          cancelable: true,
+          key: value
+        }));
+      }
+
+      try {
+        let context = createInstance(
+          '<p>One <span class="papijo-tooltip" data-papijo-tooltip="Explanation">tooltip</span>.</p>'
+        );
+        let trigger = context.root.querySelector('.papijo-tooltip');
+        assert(trigger.textContent === 'tooltip', 'One tooltip changed visible text');
+        assert(trigger.getAttribute('role') === 'button' && trigger.tabIndex === 0, 'Trigger accessibility missing');
+        click(trigger);
+        let bubble = context.root.querySelector('.papijo-runtime-speech-bubble');
+        assert(bubble && bubble.textContent === 'Explanation', 'One tooltip did not open');
+        assert(trigger.getAttribute('aria-expanded') === 'true', 'aria-expanded not set');
+        assert(trigger.getAttribute('aria-describedby') === bubble.id, 'Bubble relationship missing');
+        record('one valid tooltip');
+        click(trigger);
+
+        context = createInstance(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="First content">first</span> and <span class="papijo-tooltip" data-papijo-tooltip="Second content">second</span></p>'
+        );
+        let triggers = context.root.querySelectorAll('.papijo-tooltip');
+        assert(triggers.length === 2, 'Multiple tooltip triggers missing');
+        click(triggers[0]);
+        assert(context.root.querySelector('.papijo-runtime-speech-bubble').textContent === 'First content', 'First metadata incorrect');
+        click(triggers[1]);
+        assert(context.root.querySelectorAll('.papijo-runtime-speech-bubble').length === 1, 'Opening second duplicated bubbles');
+        assert(context.root.querySelector('.papijo-runtime-speech-bubble').textContent === 'Second content', 'Second metadata incorrect');
+        record('multiple tooltips with one active bubble');
+
+        context = createInstance(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Left">same</span><span class="papijo-tooltip" data-papijo-tooltip="Right">same</span></p>'
+        );
+        triggers = context.root.querySelectorAll('.papijo-tooltip');
+        assert(triggers.length === 2 && triggers[0].nextElementSibling === triggers[1], 'Adjacent triggers changed');
+        click(triggers[1]);
+        assert(context.root.querySelector('.papijo-runtime-speech-bubble').textContent === 'Right', 'Adjacent metadata mixed');
+        record('adjacent identical visible text remains independent');
+
+        context = createInstance(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Formatted tip">selected <strong>formatted</strong> words</span></p>'
+        );
+        trigger = context.root.querySelector('.papijo-tooltip');
+        assert(trigger.querySelector('strong').textContent === 'formatted', 'Strong formatting removed');
+        click(trigger);
+        assert(context.root.querySelector('.papijo-runtime-speech-bubble').textContent === 'Formatted tip', 'Formatted trigger failed');
+        record('formatted strong trigger preserved');
+
+        context = createInstance(
+          '<p><a href="#link-target"><span class="papijo-tooltip" data-papijo-tooltip="Link tip">linked words</span></a></p>'
+        );
+        trigger = context.root.querySelector('.papijo-tooltip');
+        var link = trigger.closest('a');
+        assert(link.getAttribute('href') === '#link-target', 'Link formatting removed');
+        link.focus();
+        assert(context.root.querySelector('.papijo-runtime-speech-bubble').textContent === 'Link tip', 'Linked trigger did not open on focus');
+        var linkClick = new MouseEvent('click', { bubbles: true, cancelable: true });
+        link.dispatchEvent(linkClick);
+        assert(!linkClick.defaultPrevented, 'Linked trigger prevented native link activation');
+        record('linked trigger preserves native activation');
+
+        context = createInstance(
+          '<p>Before <span class="papijo-tooltip" data-papijo-tooltip="Wrapped tip">several selected words that wrap across more than one visual line</span> after</p>',
+          true
+        );
+        trigger = context.root.querySelector('.papijo-tooltip');
+        assert(trigger.getClientRects().length > 1, 'Wrapped trigger did not span visual lines');
+        click(trigger);
+        bubble = context.root.querySelector('.papijo-runtime-speech-bubble');
+        assert(Number.isFinite(parseFloat(bubble.style.left)) && Number.isFinite(parseFloat(bubble.style.top)), 'Wrapped trigger was not positioned');
+        record('wrapped multi-word trigger geometry');
+
+        context = createInstance(
+          '<table><tbody><tr><td><span class="papijo-tooltip" data-papijo-tooltip="Cell tip">table words</span></td></tr></tbody></table>'
+        );
+        trigger = context.root.querySelector('.papijo-tooltip');
+        click(trigger);
+        assert(context.root.querySelector('.papijo-runtime-speech-bubble').textContent === 'Cell tip', 'Table-cell tooltip failed');
+        record('tooltip inside table cell');
+        assert(context.root.querySelector('div[style*="overflow-x:auto"] table'), 'Existing table wrapper missing');
+        record('existing table wrapping remains intact');
+
+        context = createInstance(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Fish &amp; chips &quot;quoted&quot; &amp;lt;safe&amp;gt; \'single\'">special</span></p>'
+        );
+        trigger = context.root.querySelector('.papijo-tooltip');
+        click(trigger);
+        bubble = context.root.querySelector('.papijo-runtime-speech-bubble');
+        assert(bubble.textContent === 'Fish & chips "quoted" <safe> \'single\'', 'Special characters changed');
+        assert(!bubble.querySelector('safe'), 'Tooltip text became markup');
+        record('plain-text special characters');
+
+        context = createInstance(
+          '<p><span class="papijo-tooltip">missing</span> <span class="papijo-tooltip" data-papijo-tooltip="   ">empty</span></p>'
+        );
+        assert(context.root.querySelectorAll('.papijo-runtime-tooltip-trigger').length === 0, 'Malformed metadata was initialized');
+        assert(context.root.textContent.includes('missing') && context.root.textContent.includes('empty'), 'Malformed trigger text removed');
+        record('empty and malformed metadata fail safely');
+
+        context = createInstance('<p>Ordinary <strong>Advanced Text</strong> content.</p>');
+        assert(context.root.querySelectorAll('.papijo-runtime-tooltip-trigger').length === 0, 'Ordinary content was enhanced');
+        assert(context.root.querySelector('strong').textContent === 'Advanced Text', 'Ordinary content changed');
+        record('ordinary content unchanged');
+
+        context = createInstance('<p>Literal *word:tooltip* text remains ordinary.</p>');
+        assert(context.root.textContent === 'Literal *word:tooltip* text remains ordinary.', 'Textarea syntax was parsed');
+        assert(context.root.querySelectorAll('.papijo-runtime-tooltip-trigger').length === 0, 'Literal syntax became tooltip');
+        record('Textarea syntax remains literal');
+
+        const firstInstance = createInstance('<p><span class="papijo-tooltip" data-papijo-tooltip="Instance one">same</span></p>');
+        const secondInstance = createInstance('<p><span class="papijo-tooltip" data-papijo-tooltip="Instance two">same</span></p>');
+        click(firstInstance.root.querySelector('.papijo-tooltip'));
+        click(secondInstance.root.querySelector('.papijo-tooltip'));
+        assert(firstInstance.root.querySelector('.papijo-runtime-speech-bubble').textContent === 'Instance one', 'First instance was corrupted');
+        assert(secondInstance.root.querySelector('.papijo-runtime-speech-bubble').textContent === 'Instance two', 'Second instance was corrupted');
+        record('multiple instances remain isolated');
+
+        context = createInstance('<p><span class="papijo-tooltip" data-papijo-tooltip="Once">once</span></p>');
+        assert(context.instance.initializeTooltips(H5P.jQuery(context.root)) === 1, 'Repeated initialization count changed');
+        assert(context.instance.initializeTooltips(H5P.jQuery(context.root)) === 1, 'Second initialization count changed');
+        trigger = context.root.querySelector('.papijo-tooltip');
+        click(trigger);
+        assert(context.root.querySelectorAll('.papijo-runtime-speech-bubble').length === 1, 'Repeated initialization duplicated behavior');
+        record('idempotent repeated initialization');
+
+        context = createInstance('<p><span class="papijo-tooltip" data-papijo-tooltip="Keyboard">keyboard</span></p>');
+        trigger = context.root.querySelector('.papijo-tooltip');
+        key(trigger, 'Enter');
+        assert(trigger.getAttribute('aria-expanded') === 'true', 'Enter did not open');
+        key(trigger, 'Escape');
+        assert(trigger.getAttribute('aria-expanded') === 'false' && !context.root.querySelector('.papijo-runtime-speech-bubble'), 'Escape did not close');
+        record('Enter and Escape keyboard interaction');
+        key(trigger, ' ');
+        assert(trigger.getAttribute('aria-expanded') === 'true', 'Space did not open');
+        key(trigger, ' ');
+        assert(trigger.getAttribute('aria-expanded') === 'false', 'Space did not toggle closed');
+        record('Space keyboard interaction');
+
+        context = createInstance('<p><span class="papijo-tooltip" data-papijo-tooltip="Pointer">pointer</span></p>');
+        trigger = context.root.querySelector('.papijo-tooltip');
+        click(trigger);
+        assert(context.root.querySelector('.papijo-runtime-speech-bubble'), 'Click did not open');
+        record('pointer click activation');
+        document.getElementById('outside').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        assert(!context.root.querySelector('.papijo-runtime-speech-bubble') && trigger.getAttribute('aria-expanded') === 'false', 'Outside pointer did not dismiss');
+        record('outside pointer dismissal');
+
+        context = createInstance(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="First">first</span> <span class="papijo-tooltip" data-papijo-tooltip="Second">second</span></p>'
+        );
+        triggers = context.root.querySelectorAll('.papijo-tooltip');
+        click(triggers[0]);
+        click(triggers[1]);
+        assert(context.root.querySelectorAll('.papijo-runtime-speech-bubble').length === 1, 'More than one bubble visible in instance');
+        assert(triggers[0].getAttribute('aria-expanded') === 'false' && triggers[1].getAttribute('aria-expanded') === 'true', 'Active states incorrect');
+        record('only one bubble visible per instance');
+
+        context.root.querySelector('p').style.textAlign = 'right';
+        context.root.style.width = '36rem';
+        window.dispatchEvent(new Event('resize'));
+        await wait();
+        bubble = context.root.querySelector('.papijo-runtime-speech-bubble');
+        const beforeLeft = bubble.style.left;
+        context.root.style.width = '14rem';
+        window.dispatchEvent(new Event('resize'));
+        await wait();
+        const afterLeft = bubble.style.left;
+        assert(Number.isFinite(parseFloat(afterLeft)), 'Resize produced invalid position');
+        assert(beforeLeft !== afterLeft, 'Resize did not update bubble position');
+        record('resize reposition behavior', { before: beforeLeft, after: afterLeft });
+
+        assert(results.length === 20, 'Expected 20 runtime results, got ' + results.length);
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'PASS', count: results.length, results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'pass';
+      }
+      catch (error) {
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'FAIL', message: error.message, stack: error.stack,
+          count: results.length, results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'fail';
+      }
+    })();
+  </script>
+</body>
+</html>

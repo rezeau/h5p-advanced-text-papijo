@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AdvancedTextPapiJo Phase 1A CKEditor verification</title>
+  <script src="/jquery.js"></script>
+  <script>
+    window.H5PIntegration = { editor: { wysiwygButtons: [] } };
+    window.H5PEditor = {
+      $: window.H5P.jQuery,
+      widgets: {},
+      t: function () { return ''; }
+    };
+    window.ns = window.H5PEditor;
+  </script>
+  <script src="/ckeditor.js"></script>
+  <script src="/h5peditor-html.js"></script>
+  <script src="/advanced-text-papijo-tooltip-sanitizer.js"></script>
+  <script src="/advanced-text-papijo-tooltip.js"></script>
+</head>
+<body>
+  <div id="editor"></div>
+  <pre id="result">RUNNING</pre>
+  <script>
+    (async function () {
+      const inputs = [
+        '<p>This is a <span class="papijo-tooltip" data-papijo-tooltip="Explanation">selected phrase</span> inside Advanced Text.</p>',
+        '<p><span class="papijo-tooltip" data-papijo-tooltip="Explanation">selected <strong>formatted</strong> phrase</span></p>',
+        '<p>Ordinary <strong>Advanced Text</strong> content.</p>'
+      ];
+      const expected = [
+        {
+          text: 'This is a selected phrase inside Advanced Text.',
+          tooltip: 'Explanation',
+          tooltipCount: 1,
+          strongText: null
+        },
+        {
+          text: 'selected formatted phrase',
+          tooltip: 'Explanation',
+          tooltipCount: 1,
+          strongText: 'formatted'
+        },
+        {
+          text: 'Ordinary Advanced Text content.',
+          tooltip: null,
+          tooltipCount: 0,
+          strongText: 'Advanced Text'
+        }
+      ];
+      const fieldDefinition = (await fetch('/semantics.json').then(function (response) {
+        return response.json();
+      }))[0];
+      const outputs = [];
+
+      try {
+        for (let index = 0; index < inputs.length; index++) {
+          const host = document.getElementById('editor');
+          host.innerHTML = inputs[index];
+          let saved;
+          const field = JSON.parse(JSON.stringify(fieldDefinition));
+          const widget = new H5PEditor.AdvancedTextPapiJoTooltip(
+            {}, field, inputs[index], function (_field, value) { saved = value; }
+          );
+          const editor = await ClassicEditor.create(host, widget.getCKEditorConfig());
+          widget.ckeditor = editor;
+          widget.$input = window.H5P.jQuery(host);
+          widget.$errors = window.H5P.jQuery('<div>');
+
+          const serialized = editor.getData();
+          const modelAttributes = Array.from(
+            editor.model.createRangeIn(editor.model.document.getRoot()).getItems()
+          ).map(function (item) {
+            return Array.from(item.getAttributes ? item.getAttributes() : []);
+          }).filter(function (attributes) {
+            return attributes.length > 0;
+          });
+          const validated = widget.validate();
+          const documentFragment = document.createElement('div');
+          documentFragment.innerHTML = validated;
+          const tooltip = documentFragment.querySelector('span.papijo-tooltip');
+          const strong = documentFragment.querySelector('strong');
+          const actual = {
+            text: documentFragment.textContent.trim(),
+            tooltip: tooltip && tooltip.getAttribute('data-papijo-tooltip'),
+            tooltipCount: documentFragment.querySelectorAll('span.papijo-tooltip').length,
+            strongText: strong && strong.textContent,
+            serialized: serialized,
+            validated: validated,
+            saved: saved
+          };
+          actual.modelAttributes = modelAttributes;
+
+          if (actual.text !== expected[index].text ||
+              actual.tooltip !== expected[index].tooltip ||
+              actual.tooltipCount !== expected[index].tooltipCount ||
+              actual.strongText !== expected[index].strongText ||
+              actual.saved !== actual.validated) {
+            throw new Error('Round-trip mismatch at case ' + index + ': ' + JSON.stringify(actual));
+          }
+
+          outputs.push(actual);
+          await editor.destroy();
+
+          host.innerHTML = saved;
+          const reopenedField = JSON.parse(JSON.stringify(fieldDefinition));
+          const reopenedWidget = new H5PEditor.AdvancedTextPapiJoTooltip(
+            {}, reopenedField, saved, function () {}
+          );
+          const reopenedEditor = await ClassicEditor.create(
+            host,
+            reopenedWidget.getCKEditorConfig()
+          );
+          const reopened = reopenedEditor.getData();
+
+          if (reopened !== saved) {
+            throw new Error('Save/reopen mismatch at case ' + index + ': ' + reopened);
+          }
+
+          actual.reopened = reopened;
+          await reopenedEditor.destroy();
+          host.innerHTML = '';
+        }
+
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'PASS',
+          outputs: outputs
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'pass';
+      }
+      catch (error) {
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'FAIL',
+          message: error.message,
+          stack: error.stack
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'fail';
+      }
+    })();
+  </script>
+</body>
+</html>

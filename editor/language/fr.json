@@ -1,0 +1,27 @@
+{
+  "libraryStrings": {
+    "createTooltip": "Créer une infobulle",
+    "editTooltip": "Modifier l’infobulle",
+    "removeTooltip": "Supprimer l’infobulle",
+    "tooltipText": "Texte de l’infobulle",
+    "applyTooltip": "Appliquer l’infobulle",
+    "updateTooltip": "Mettre à jour l’infobulle",
+    "cancel": "Annuler",
+    "enterTooltipText": "Saisissez le texte de l’infobulle.",
+    "selectTextBeforeCreating": "Sélectionnez un ou plusieurs mots avant de créer une infobulle.",
+    "selectTextFirst": "Sélectionnez d’abord du texte dans l’éditeur.",
+    "selectionMustStayInOneBlock": "La sélection doit rester dans un seul paragraphe, titre, élément de liste ou autre bloc de texte.",
+    "selectionMustStayInOneTableCell": "La sélection doit rester dans une seule cellule de tableau.",
+    "selectionCannotOverlapTooltip": "La sélection ne peut pas inclure ou chevaucher une infobulle existante.",
+    "selectionCrossesTooltipBoundary": "La sélection traverse la limite d’une infobulle.",
+    "selectionContainsTooltip": "La sélection contient une infobulle existante et du texte ordinaire.",
+    "selectionContainsMultipleTooltips": "La sélection contient plusieurs infobulles.",
+    "tooltipSelectionUnavailable": "Placez le curseur ou la sélection dans une seule infobulle.",
+    "unableToCreateTooltip": "Impossible de créer l’infobulle.",
+    "unableToUpdateTooltip": "Impossible de mettre à jour l’infobulle.",
+    "unableToRemoveTooltip": "Impossible de supprimer l’infobulle.",
+    "tooltipCreated": "Infobulle créée.",
+    "tooltipUpdated": "Infobulle mise à jour.",
+    "tooltipRemoved": "Infobulle supprimée."
+  }
+}

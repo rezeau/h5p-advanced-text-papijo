@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AdvancedTextPapiJo integration stability verification</title>
+  <script src="/jquery.js"></script>
+  <script>
+    window.H5P.EventDispatcher = function () {};
+    window.H5P.EventDispatcher.prototype.trigger = function () {};
+    window.H5P.EventDispatcher.prototype.createXAPIEventTemplate = function () {
+      return {};
+    };
+    window.H5PIntegration = { editor: { wysiwygButtons: [] } };
+    window.H5PEditor = {
+      $: window.H5P.jQuery,
+      widgets: {},
+      language: {},
+      t: function (library, key) {
+        const translations = this.language[library];
+        return translations && translations.libraryStrings ?
+          translations.libraryStrings[key] : key;
+      }
+    };
+    window.ns = window.H5PEditor;
+  </script>
+  <script src="/advanced-text-papijo-tooltip-sanitizer.js"></script>
+  <script src="/advanced-text-papijo-speech-bubble.js"></script>
+  <script src="/advanced-text-papijo-tooltip-runtime.js"></script>
+  <script src="/text.js"></script>
+  <script>
+    window.H5P.newRunnable = function (descriptor, contentId) {
+      if (descriptor.library === 'H5P.AdvancedTextPapiJo 1.1') {
+        return new window.H5P.AdvancedTextPapiJo(descriptor.params, contentId);
+      }
+      throw new Error('Unexpected child library: ' + descriptor.library);
+    };
+  </script>
+  <script src="/accordion.js"></script>
+  <script src="/ckeditor.js"></script>
+  <script src="/h5peditor-html.js"></script>
+  <script src="/advanced-text-papijo-tooltip.js"></script>
+</head>
+<body>
+  <div id="runtime-fixture"></div>
+  <div id="editor-fixture"></div>
+  <pre id="result">RUNNING</pre>
+  <script>
+    (async function () {
+      const LIBRARY = 'H5PEditor.AdvancedTextPapiJoTooltip';
+      const [fieldDefinition, english] = await Promise.all([
+        fetch('/semantics.json').then(function (response) { return response.json(); }),
+        fetch('/language/en.json').then(function (response) { return response.json(); })
+      ]);
+      H5PEditor.language[LIBRARY] = english;
+      const $ = H5P.jQuery;
+      const results = [];
+
+      function assert(condition, message) {
+        if (!condition) {
+          throw new Error(message);
+        }
+      }
+
+      function record(name) {
+        results.push({ name: name });
+      }
+
+      function createWidget($item, html) {
+        const widget = new H5PEditor.AdvancedTextPapiJoTooltip(
+          {}, JSON.parse(JSON.stringify(fieldDefinition[0])), html,
+          function () {}
+        );
+        widget.$item = $item;
+        return widget;
+      }
+
+      async function startNestedEditor(widget, host) {
+        host.innerHTML = '<p>Nested editor text</p>';
+        const editor = await ClassicEditor.create(host, widget.getCKEditorConfig());
+        widget.ckeditor = editor;
+        widget.$input = $(host);
+        widget.$errors = $('<div>');
+        widget.bindTooltipSelectionUpdates(editor);
+        return editor;
+      }
+
+      try {
+        const childDescriptor = {
+          params: {},
+          library: 'H5P.AdvancedTextPapiJo 1.1',
+          metadata: { title: 'Untitled Text Papi Jo' },
+          subContentId: 'fbd676e9-858c-40ab-8b14-386350a6961f'
+        };
+        const accordion = new H5P.AccordionPapiJo({
+          hTag: 'h2',
+          panels: [{ title: 'Testing tooltip', content: childDescriptor }]
+        }, 1, {});
+        assert(accordion.instances.length === 1, 'Accordion did not instantiate its child');
+        const $runtime = $('#runtime-fixture');
+        accordion.instances[0].attach($runtime);
+        assert($runtime.html() === '<em>New text</em>', 'Empty Accordion child did not use fallback text');
+        record('Accordion runtime child with empty params');
+
+        let autocompleteMethodCalls = 0;
+        $.fn.autocomplete = function (method) {
+          autocompleteMethodCalls++;
+          if (typeof method === 'string' && !this.data('ui-autocomplete')) {
+            throw new Error(
+              "cannot call methods on autocomplete prior to initialization; attempted to call method '" + method + "'"
+            );
+          }
+          return this;
+        };
+
+        let originalFailureReproduced = false;
+        try {
+          $('<input>', { autocomplete: 'off' });
+        }
+        catch (error) {
+          originalFailureReproduced = error.message.includes('prior to initialization');
+        }
+        assert(originalFailureReproduced, 'Harness did not reproduce the original jQuery collision');
+        autocompleteMethodCalls = 0;
+        record('original autocomplete property collision reproduced');
+
+        const editorFixture = document.getElementById('editor-fixture');
+        editorFixture.innerHTML = [
+          '<div class="accordion-editor">',
+          '  <div class="panel-list-item" id="panel-one">',
+          '    <div class="advanced-text-item"><div class="editor-host"></div></div>',
+          '  </div>',
+          '  <div class="panel-list-item" id="panel-two">',
+          '    <div class="advanced-text-item"><div class="editor-host"></div></div>',
+          '  </div>',
+          '</div>'
+        ].join('');
+
+        const panelOne = $('#panel-one .advanced-text-item');
+        const widgetOne = createWidget(panelOne, '<p>First nested editor</p>');
+        widgetOne.addTooltipAuthoringControls();
+        assert(autocompleteMethodCalls === 0, 'Tooltip input invoked jQuery autocomplete');
+        assert(panelOne.find('.papijo-tooltip-authoring-controls').length === 1, 'First controls were not added');
+        assert(panelOne.find('.papijo-tooltip-authoring-input').attr('autocomplete') === undefined, 'Tooltip input retained autocomplete configuration');
+        const editorOne = await startNestedEditor(
+          widgetOne,
+          panelOne.find('.editor-host')[0]
+        );
+        record('nested editor initializes without autocomplete call');
+
+        widgetOne.addTooltipAuthoringControls();
+        assert(panelOne.find('.papijo-tooltip-authoring-controls').length === 1, 'Repeated initialization duplicated controls');
+        assert(autocompleteMethodCalls === 0, 'Repeated initialization invoked autocomplete');
+        record('repeated control initialization is idempotent');
+
+        const panelTwo = $('#panel-two .advanced-text-item');
+        const widgetTwo = createWidget(panelTwo, '<p>Second nested editor</p>');
+        widgetTwo.addTooltipAuthoringControls();
+        const editorTwo = await startNestedEditor(
+          widgetTwo,
+          panelTwo.find('.editor-host')[0]
+        );
+        assert(panelTwo.find('.papijo-tooltip-authoring-controls').length === 1, 'Second instance controls missing');
+        assert(widgetOne.$tooltipForm.attr('id') !== widgetTwo.$tooltipForm.attr('id'), 'Multiple instances reused a form id');
+        assert(autocompleteMethodCalls === 0, 'Multiple instances invoked autocomplete');
+        record('multiple nested AdvancedText instances remain independent');
+
+        await editorOne.destroy();
+        $('#panel-one').remove();
+        $('.accordion-editor').append(
+          '<div class="panel-list-item" id="panel-three"><div class="advanced-text-item"><div class="editor-host"></div></div></div>'
+        );
+        const panelThree = $('#panel-three .advanced-text-item');
+        const widgetThree = createWidget(panelThree, '<p>Replacement list item</p>');
+        widgetThree.addTooltipAuthoringControls();
+        const editorThree = await startNestedEditor(
+          widgetThree,
+          panelThree.find('.editor-host')[0]
+        );
+        assert(panelThree.find('.papijo-tooltip-authoring-controls').length === 1, 'Replacement list item controls missing');
+        assert(autocompleteMethodCalls === 0, 'List item replacement invoked autocomplete');
+        record('Accordion list item removal and creation lifecycle');
+
+        await editorTwo.destroy();
+        await editorThree.destroy();
+        delete $.fn.autocomplete;
+
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'PASS', count: results.length, results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'pass';
+      }
+      catch (error) {
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'FAIL', message: error.message, stack: error.stack,
+          count: results.length, results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'fail';
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AdvancedTextPapiJo Phase 1F runtime verification</title>
+  <link rel="stylesheet" href="/advanced-text-papijo-speech-bubble.css">
+  <link rel="stylesheet" href="/advanced-text-papijo-tooltip-runtime.css">
+  <script src="/jquery.js"></script>
+  <script>
+    window.H5P.EventDispatcher = function () {};
+    window.H5P.EventDispatcher.prototype = {};
+    window.phase1fAlertCount = 0;
+    window.alert = function () { window.phase1fAlertCount++; };
+  </script>
+  <script src="/advanced-text-papijo-tooltip-sanitizer.js"></script>
+  <script src="/advanced-text-papijo-speech-bubble.js"></script>
+  <script src="/advanced-text-papijo-tooltip-runtime.js"></script>
+  <script src="/text.js"></script>
+</head>
+<body>
+  <div id="fixture"></div>
+  <pre id="result">RUNNING</pre>
+  <script>
+    (function () {
+      const fixture = document.getElementById('fixture');
+      const results = [];
+      let nextId = 0;
+
+      function assert(condition, message) {
+        if (!condition) {
+          throw new Error(message);
+        }
+      }
+
+      function record(name) {
+        results.push({ name: name });
+      }
+
+      function escapeAttribute(value) {
+        return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+          .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+
+      function createTooltip(value) {
+        const root = document.createElement('div');
+        fixture.appendChild(root);
+        const html = '<p><span class="papijo-tooltip" data-papijo-tooltip="' +
+          escapeAttribute(value) + '">trigger</span></p>';
+        const instance = new H5P.AdvancedTextPapiJo({ text: html }, ++nextId);
+        instance.attach(H5P.jQuery(root));
+        return { root: root, trigger: root.querySelector('.papijo-tooltip') };
+      }
+
+      function open(context) {
+        context.trigger.dispatchEvent(new MouseEvent('click', {
+          bubbles: true, cancelable: true
+        }));
+        return context.root.querySelector('.papijo-runtime-speech-bubble-text');
+      }
+
+      function expectMarkup(name, input, expected) {
+        const context = createTooltip(input);
+        const bubble = open(context);
+        assert(bubble && bubble.innerHTML === expected,
+          name + ' mismatch: ' + (bubble && bubble.innerHTML));
+        record(name);
+      }
+
+      try {
+        expectMarkup('plain runtime tooltip', 'Explanation', 'Explanation');
+        expectMarkup('em runtime rendering', '<em>important</em>', '<em>important</em>');
+        expectMarkup('strong runtime rendering', '<strong>important</strong>', '<strong>important</strong>');
+        expectMarkup('sup and sub runtime rendering', 'H<sub>2</sub>O x<sup>2</sup>', 'H<sub>2</sub>O x<sup>2</sup>');
+        expectMarkup('s runtime rendering', '<s>obsolete</s>', '<s>obsolete</s>');
+        expectMarkup('br runtime rendering', 'first<br>second', 'first<br>second');
+        expectMarkup(
+          'nested runtime rendering',
+          '<strong>very <em>important</em></strong>',
+          '<strong>very <em>important</em></strong>'
+        );
+        expectMarkup(
+          'allowed-tag attributes stripped at runtime',
+          '<strong onclick="alert(1)" class="bad">text</strong>',
+          '<strong>text</strong>'
+        );
+        expectMarkup(
+          'disallowed tags unwrapped at runtime',
+          '<a href="javascript:alert(1)">link</a> <span style="color:red">span</span>',
+          'link span'
+        );
+        expectMarkup(
+          'image and handler removed at runtime',
+          '<img src=x onerror=alert(1)>safe',
+          'safe'
+        );
+
+        const scriptContext = createTooltip('<script>alert(1)<\/script>');
+        assert(!scriptContext.trigger.hasAttribute('role') && !open(scriptContext),
+          'Script-only metadata became an interactive tooltip');
+        assert(window.phase1fAlertCount === 0, 'Executable tooltip content ran');
+        record('script content rejected without execution');
+
+        expectMarkup(
+          'special plain characters remain text',
+          'Fish & chips "quoted" \'single\'',
+          'Fish &amp; chips "quoted" \'single\''
+        );
+        assert(window.phase1fAlertCount === 0, 'An event handler executed');
+
+        assert(results.length === 12, 'Expected 12 results, got ' + results.length);
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'PASS', count: results.length, results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'pass';
+      }
+      catch (error) {
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'FAIL', message: error.message, stack: error.stack,
+          count: results.length, results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'fail';
+      }
+    })();
+  </script>
+</body>
+</html>

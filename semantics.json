@@ -2,7 +2,7 @@
   {
     "name": "text",
     "type": "text",
-    "widget": "html",
+    "widget": "advancedTextPapiJoTooltip",
     "label": "Text",
     "importance": "high",
     "enterMode": "p",
@@ -26,7 +26,8 @@
       "h6",
       "pre",
       "hr",
-      "table"
+      "table",
+      "span"
     ],
     "font": {
       "size": true,

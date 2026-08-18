@@ -1,0 +1,27 @@
+{
+  "libraryStrings": {
+    "createTooltip": "Create tooltip",
+    "editTooltip": "Edit tooltip",
+    "removeTooltip": "Remove tooltip",
+    "tooltipText": "Tooltip text",
+    "applyTooltip": "Apply tooltip",
+    "updateTooltip": "Update tooltip",
+    "cancel": "Cancel",
+    "enterTooltipText": "Enter tooltip text.",
+    "selectTextBeforeCreating": "Select one or more words before creating a tooltip.",
+    "selectTextFirst": "Select text in the editor first.",
+    "selectionMustStayInOneBlock": "The selection must stay within one paragraph, heading, list item, or other text block.",
+    "selectionMustStayInOneTableCell": "The selection must stay within one table cell.",
+    "selectionCannotOverlapTooltip": "The selection cannot include or overlap an existing tooltip.",
+    "selectionCrossesTooltipBoundary": "The selection crosses a tooltip boundary.",
+    "selectionContainsTooltip": "The selection contains an existing tooltip and ordinary text.",
+    "selectionContainsMultipleTooltips": "The selection contains more than one tooltip.",
+    "tooltipSelectionUnavailable": "Place the caret or selection inside one tooltip.",
+    "unableToCreateTooltip": "Unable to create tooltip.",
+    "unableToUpdateTooltip": "Unable to update tooltip.",
+    "unableToRemoveTooltip": "Unable to remove tooltip.",
+    "tooltipCreated": "Tooltip created.",
+    "tooltipUpdated": "Tooltip updated.",
+    "tooltipRemoved": "Tooltip removed."
+  }
+}

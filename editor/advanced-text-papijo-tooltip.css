@@ -1,0 +1,36 @@
+.papijo-tooltip-authoring-controls {
+  margin-top: 0.75em;
+}
+
+.papijo-tooltip-authoring-create,
+.papijo-tooltip-authoring-edit,
+.papijo-tooltip-authoring-remove,
+.papijo-tooltip-authoring-apply,
+.papijo-tooltip-authoring-cancel {
+  margin-right: 0.5em;
+}
+
+.papijo-tooltip-authoring-form {
+  margin-top: 0.75em;
+}
+
+.papijo-tooltip-authoring-form[hidden] {
+  display: none;
+}
+
+.papijo-tooltip-authoring-label {
+  display: block;
+  margin-bottom: 0.5em;
+}
+
+.papijo-tooltip-authoring-input {
+  box-sizing: border-box;
+  display: block;
+  margin-top: 0.25em;
+  max-width: 32em;
+  width: 100%;
+}
+
+.papijo-tooltip-authoring-status {
+  margin: 0.5em 0 0;
+}

@@ -1,0 +1,66 @@
+.papijo-runtime-tooltips {
+  overflow: visible;
+  position: relative;
+}
+
+.papijo-runtime-speech-bubble {
+  background: #fff;
+  border: 1px solid #7a7a7a;
+  border-radius: 0.35em;
+  box-shadow: 0 0.2em 0.65em rgba(0, 0, 0, 0.25);
+  box-sizing: border-box;
+  color: #222;
+  font-family: sans-serif;
+  font-size: 1rem;
+  line-height: 1.4;
+  max-width: min(24rem, calc(100% - 0.5rem));
+  min-width: min(8rem, calc(100% - 0.5rem));
+  opacity: 0;
+  padding: 0.65em 0.8em;
+  pointer-events: auto;
+  position: absolute;
+  transition: opacity 120ms ease-in;
+  visibility: hidden;
+  width: max-content;
+  z-index: 1000;
+}
+
+.papijo-runtime-speech-bubble-show {
+  opacity: 1;
+  visibility: visible;
+}
+
+.papijo-runtime-speech-bubble::before,
+.papijo-runtime-speech-bubble::after {
+  border-left: 0.55em solid transparent;
+  border-right: 0.55em solid transparent;
+  content: '';
+  left: var(--papijo-runtime-tail-left);
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+.papijo-runtime-speech-bubble-below::before {
+  border-bottom: 0.55em solid #7a7a7a;
+  bottom: 100%;
+}
+
+.papijo-runtime-speech-bubble-below::after {
+  border-bottom: 0.48em solid #fff;
+  bottom: calc(100% - 1px);
+}
+
+.papijo-runtime-speech-bubble-above::before {
+  border-top: 0.55em solid #7a7a7a;
+  top: 100%;
+}
+
+.papijo-runtime-speech-bubble-above::after {
+  border-top: 0.48em solid #fff;
+  top: calc(100% - 1px);
+}
+
+.papijo-runtime-speech-bubble-text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
