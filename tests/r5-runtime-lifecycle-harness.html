@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AdvancedTextPapiJo R5 runtime lifecycle verification</title>
+  <script src="/jquery.js"></script>
+  <script src="/advanced-text-papijo-tooltip-sanitizer.js"></script>
+  <script src="/advanced-text-papijo-speech-bubble.js"></script>
+  <script src="/advanced-text-papijo-tooltip-runtime.js"></script>
+</head>
+<body>
+  <div id="fixture"></div>
+  <button id="outside" type="button">Outside</button>
+  <pre id="result">RUNNING</pre>
+  <script>
+    (async function () {
+      const fixture = document.getElementById('fixture');
+      const results = [];
+
+      function assert(condition, message) {
+        if (!condition) {
+          throw new Error(message);
+        }
+      }
+
+      function record(name) {
+        results.push({ name: name });
+      }
+
+      function createContext(html) {
+        const root = document.createElement('div');
+        root.className = 'r5-runtime-root';
+        root.innerHTML = html;
+        fixture.appendChild(root);
+        const controller = new H5P.AdvancedTextPapiJoTooltipRuntime(root);
+        return { controller: controller, root: root };
+      }
+
+      function click(element) {
+        element.dispatchEvent(new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true
+        }));
+      }
+
+      function pointerActivate(element) {
+        element.dispatchEvent(new PointerEvent('pointerover', {
+          bubbles: true
+        }));
+      }
+
+      function settleMutations() {
+        return new Promise(function (resolve) {
+          window.setTimeout(resolve, 0);
+        });
+      }
+
+      try {
+        let context = createContext(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Detached">trigger</span></p>'
+        );
+        assert(context.controller.initialize() === 1, 'Open-removal controller did not initialize');
+        let trigger = context.root.querySelector('.papijo-tooltip');
+        click(trigger);
+        const removedBubble = context.controller.activeState.bubble;
+        assert(removedBubble && removedBubble.element, 'Open-removal bubble did not open');
+        context.root.remove();
+        await settleMutations();
+
+        assert(context.controller.activeState === null, 'Root removal retained active state');
+        assert(context.controller.states.length === 0, 'Root removal retained tooltip states');
+        record('open root removal destroys controller state');
+        assert(!context.root.querySelector('.papijo-runtime-speech-bubble'), 'Detached root retained bubble');
+        record('removed root leaves no active bubble');
+        assert(!trigger.hasAttribute('aria-expanded'), 'Detached trigger retained expanded state');
+        assert(!trigger.classList.contains('papijo-runtime-tooltip-trigger'), 'Detached trigger retained enhancement class');
+        record('removed root restores trigger state');
+        assert(!context.controller.outsidePointerAttached, 'Outside-pointer listener remained attached');
+        record('root cleanup releases document listener');
+        assert(context.controller.connectionObserver === null, 'Connection observer remained attached');
+        assert(removedBubble.resizeObserver === null, 'Bubble ResizeObserver remained attached');
+        assert(removedBubble.animationFrame === null, 'Bubble animation frame remained scheduled');
+        record('root cleanup releases observer and frame resources');
+
+        fixture.appendChild(context.root);
+        const replacement = new H5P.AdvancedTextPapiJoTooltipRuntime(context.root);
+        assert(replacement.initialize() === 1, 'Cleanup did not release trigger ownership');
+        record('automatic cleanup releases WeakMap ownership');
+        assert(replacement.initialize() === 1, 'Repeated replacement initialization changed state count');
+        click(trigger);
+        assert(context.root.querySelectorAll('.papijo-runtime-speech-bubble').length === 1, 'Replacement duplicated bubble behavior');
+        record('reinitialize after cleanup works exactly once');
+        replacement.destroy();
+        context.root.remove();
+
+        context = createContext(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Closed removal">trigger</span></p>'
+        );
+        context.controller.initialize();
+        trigger = context.root.querySelector('.papijo-tooltip');
+        context.root.remove();
+        await settleMutations();
+        assert(context.controller.states.length === 0, 'Closed root removal retained states');
+        assert(context.controller.connectionObserver === null, 'Closed root removal retained observer');
+        assert(!trigger.classList.contains('papijo-runtime-tooltip-trigger'), 'Closed root removal retained trigger enhancement');
+        record('closed root removal also cleans up');
+
+        context = createContext(
+          '<p><a href="#shared" aria-controls="original-controls" ' +
+          'aria-describedby="original-description" aria-expanded="true" ' +
+          'aria-haspopup="menu">' +
+          '<span class="papijo-tooltip" data-papijo-tooltip="First">first</span> ' +
+          '<span class="papijo-tooltip" data-papijo-tooltip="Second">second</span>' +
+          '</a></p>'
+        );
+        assert(context.controller.initialize() === 2, 'Shared tooltip states did not initialize');
+        const link = context.root.querySelector('a');
+        const triggers = context.root.querySelectorAll('.papijo-tooltip');
+        const firstState = context.controller.states[0];
+        const secondState = context.controller.states[1];
+        assert(context.controller.controlRecords.length === 1, 'Shared link created multiple control owners');
+        assert(context.controller.controlRecords[0].states.length === 2, 'Control owner did not retain both states');
+        record('two tooltip spans share one control owner');
+        assert(!link.hasAttribute('aria-controls') && !link.hasAttribute('aria-describedby'), 'Inactive shared control retained tooltip references');
+        assert(link.getAttribute('aria-expanded') === 'false', 'Inactive shared control was expanded');
+        assert(link.getAttribute('aria-haspopup') === 'true', 'Enhanced shared control missing popup state');
+        record('inactive shared control has coherent ARIA state');
+
+        link.focus();
+        assert(context.controller.activeState === firstState, 'Focus did not choose first shared tooltip');
+        assert(context.root.querySelector('.papijo-runtime-speech-bubble').textContent === 'First', 'Focus opened wrong shared tooltip');
+        record('shared-control focus deterministically selects first tooltip');
+        assert(link.getAttribute('aria-controls') === firstState.bubbleId, 'Focused shared control has wrong aria-controls');
+        assert(link.getAttribute('aria-describedby') === firstState.bubbleId, 'Focused shared control has wrong aria-describedby');
+        assert(link.getAttribute('aria-expanded') === 'true', 'Focused shared control was not expanded');
+        record('active shared control references one bubble');
+
+        pointerActivate(triggers[1]);
+        assert(context.controller.activeState === secondState, 'Pointer did not choose child tooltip');
+        assert(context.root.querySelector('.papijo-runtime-speech-bubble').textContent === 'Second', 'Pointer opened wrong child tooltip');
+        record('pointer activation selects intended child tooltip');
+        assert(context.root.querySelectorAll('.papijo-runtime-speech-bubble').length === 1, 'Shared switch retained multiple bubbles');
+        assert(link.getAttribute('aria-controls') === secondState.bubbleId, 'Shared switch retained old aria-controls');
+        assert(link.getAttribute('aria-describedby') === secondState.bubbleId, 'Shared switch retained old aria-describedby');
+        record('second child replaces active ARIA references');
+
+        const linkClick = new MouseEvent('click', { bubbles: true, cancelable: true });
+        link.dispatchEvent(linkClick);
+        assert(!linkClick.defaultPrevented, 'Shared control prevented native link activation');
+        record('shared link preserves native activation');
+
+        context.controller.destroy();
+        assert(link.getAttribute('aria-controls') === 'original-controls', 'Original aria-controls was not restored');
+        assert(link.getAttribute('aria-describedby') === 'original-description', 'Original aria-describedby was not restored');
+        assert(link.getAttribute('aria-expanded') === 'true', 'Original aria-expanded was not restored');
+        assert(link.getAttribute('aria-haspopup') === 'menu', 'Original aria-haspopup was not restored');
+        record('destroy restores original shared-control ARIA exactly');
+        assert(!context.root.querySelector('.papijo-runtime-speech-bubble'), 'Shared destroy retained bubble');
+        assert(!triggers[0].classList.contains('papijo-runtime-tooltip-trigger') &&
+          !triggers[1].classList.contains('papijo-runtime-tooltip-trigger'),
+        'Shared destroy retained trigger classes');
+        record('shared destroy removes tooltip-specific state');
+        context.root.remove();
+
+        const first = createContext(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="One">one</span></p>'
+        );
+        const second = createContext(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Two">two</span></p>'
+        );
+        first.controller.initialize();
+        second.controller.initialize();
+        click(first.root.querySelector('.papijo-tooltip'));
+        click(second.root.querySelector('.papijo-tooltip'));
+        first.root.remove();
+        await settleMutations();
+        assert(first.controller.activeState === null, 'Removed first instance stayed active');
+        assert(second.controller.activeState !== null, 'First cleanup changed second instance');
+        assert(second.root.querySelector('.papijo-runtime-speech-bubble').textContent === 'Two', 'Second instance bubble changed');
+        record('multiple runtime instances remain isolated');
+        second.controller.destroy();
+        second.root.remove();
+
+        context = createContext(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Cycle">cycle</span></p>'
+        );
+        trigger = context.root.querySelector('.papijo-tooltip');
+        for (let cycle = 0; cycle < 3; cycle++) {
+          const cycleController = new H5P.AdvancedTextPapiJoTooltipRuntime(context.root);
+          assert(cycleController.initialize() === 1, 'Cycle ' + cycle + ' did not initialize');
+          assert(cycleController.initialize() === 1, 'Cycle ' + cycle + ' duplicated states');
+          click(trigger);
+          assert(context.root.querySelectorAll('.papijo-runtime-speech-bubble').length === 1, 'Cycle ' + cycle + ' duplicated bubbles');
+          cycleController.destroy();
+          assert(!context.root.querySelector('.papijo-runtime-speech-bubble'), 'Cycle ' + cycle + ' retained bubble');
+          assert(!trigger.classList.contains('papijo-runtime-tooltip-trigger'), 'Cycle ' + cycle + ' retained class');
+        }
+        record('repeated initialize and destroy cycles do not accumulate resources');
+        context.root.remove();
+
+        assert(results.length === 19, 'Expected 19 results, got ' + results.length);
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'PASS', count: results.length, results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'pass';
+      }
+      catch (error) {
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'FAIL', message: error.message, stack: error.stack,
+          count: results.length, results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'fail';
+      }
+    })();
+  </script>
+</body>
+</html>

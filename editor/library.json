@@ -12,6 +12,9 @@
       "path": "advanced-text-papijo-tooltip-sanitizer.js"
     },
     {
+      "path": "advanced-text-papijo-tooltip-selection.js"
+    },
+    {
       "path": "advanced-text-papijo-tooltip.js"
     }
   ],

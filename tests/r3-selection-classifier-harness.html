@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AdvancedTextPapiJo R3 selection classifier verification</title>
+  <script src="/jquery.js"></script>
+  <script>
+    window.H5PIntegration = { editor: { wysiwygButtons: [] } };
+    window.H5PEditor = {
+      $: window.H5P.jQuery,
+      widgets: {},
+      language: {},
+      t: function (library, key) {
+        const translations = this.language[library];
+        return translations && translations.libraryStrings ?
+          translations.libraryStrings[key] : key;
+      }
+    };
+    window.ns = window.H5PEditor;
+  </script>
+  <script src="/ckeditor.js"></script>
+  <script src="/h5peditor-html.js"></script>
+  <script src="/advanced-text-papijo-tooltip-sanitizer.js"></script>
+  <script src="/advanced-text-papijo-tooltip-selection.js"></script>
+  <script src="/advanced-text-papijo-tooltip.js"></script>
+</head>
+<body>
+  <div id="fixture"></div>
+  <pre id="result">RUNNING</pre>
+  <script>
+    (async function () {
+      const LIBRARY = 'H5PEditor.AdvancedTextPapiJoTooltip';
+      const [fields, english] = await Promise.all([
+        fetch('/semantics.json').then(function (response) { return response.json(); }),
+        fetch('/language/en.json').then(function (response) { return response.json(); })
+      ]);
+      H5PEditor.language[LIBRARY] = english;
+      const Classifier = H5PEditor.AdvancedTextPapiJoTooltipSelection;
+      const fixture = document.getElementById('fixture');
+      const results = [];
+
+      function assert(condition, message) {
+        if (!condition) {
+          throw new Error(message);
+        }
+      }
+
+      function collectTextContainers(node, containers) {
+        const children = Array.from(node.getChildren ? node.getChildren() : []);
+        if (children.some(function (child) { return child.is('$text'); })) {
+          containers.push(node);
+        }
+        children.forEach(function (child) {
+          if (child.getChildren) {
+            collectTextContainers(child, containers);
+          }
+        });
+      }
+
+      function getTextContainers(editor) {
+        const containers = [];
+        collectTextContainers(editor.model.document.getRoot(), containers);
+        return containers;
+      }
+
+      function setSelection(editor, coordinates) {
+        const containers = getTextContainers(editor);
+        editor.model.change(function (writer) {
+          writer.setSelection(writer.createRange(
+            writer.createPositionAt(containers[coordinates[0]], coordinates[1]),
+            writer.createPositionAt(containers[coordinates[2]], coordinates[3])
+          ));
+        });
+      }
+
+      async function openEditor(html) {
+        fixture.innerHTML = '<div class="editor-host"></div>';
+        const host = fixture.querySelector('.editor-host');
+        host.innerHTML = html;
+        const widget = new H5PEditor.AdvancedTextPapiJoTooltip(
+          {}, JSON.parse(JSON.stringify(fields[0])), html, function () {}
+        );
+        const editor = await ClassicEditor.create(host, widget.getCKEditorConfig());
+        return { editor: editor, widget: widget };
+      }
+
+      async function closeEditor(context) {
+        await context.editor.destroy();
+        fixture.innerHTML = '';
+      }
+
+      async function classify(name, html, coordinates, method, expected) {
+        const context = await openEditor(html);
+        setSelection(context.editor, coordinates);
+        const selection = context.editor.model.document.selection;
+        const result = Classifier[method](context.editor, selection);
+        Object.keys(expected).forEach(function (key) {
+          assert(
+            result[key] === expected[key],
+            name + ': expected ' + key + '=' + expected[key] +
+              ', got ' + result[key]
+          );
+        });
+        assert(result.message === undefined, name + ': helper localized its own message');
+        results.push({
+          name: name,
+          valid: result.valid,
+          kind: result.kind,
+          reason: result.reason,
+          messageKey: result.messageKey
+        });
+        await closeEditor(context);
+        return result;
+      }
+
+      try {
+        assert(Classifier, 'Selection classifier API was not registered');
+        assert(typeof Classifier.detectExistingTooltip === 'function', 'Missing detection API');
+        assert(typeof Classifier.validateSelection === 'function', 'Missing validation API');
+
+        const ordinary = await classify(
+          'ordinary multi-word selection',
+          '<p>one two three</p>', [0, 0, 0, 7], 'validateSelection',
+          { valid: true, reason: 'ordinarySelection' }
+        );
+        assert(ordinary.ranges.length === 1, 'Ordinary selection did not preserve one range');
+        assert(typeof ordinary.attributeName === 'string', 'Ordinary selection omitted attribute name');
+
+        const existing = await classify(
+          'existing tooltip selection',
+          '<p>Before <span class="papijo-tooltip" data-papijo-tooltip="Existing">tooltip</span> after</p>',
+          [0, 8, 0, 10], 'detectExistingTooltip',
+          { valid: true, kind: 'tooltip', reason: 'existingTooltip', text: 'Existing' }
+        );
+        assert(existing.range.start.offset === 7, 'Existing tooltip range did not expand to start');
+        assert(existing.range.end.offset === 14, 'Existing tooltip range did not expand to end');
+        assert(existing.selectionRanges.length === 1, 'Original selection range was not preserved');
+
+        await classify(
+          'collapsed selection',
+          '<p>one two three</p>', [0, 2, 0, 2], 'validateSelection',
+          { valid: false, reason: 'emptySelection', messageKey: 'selectTextBeforeCreating' }
+        );
+        await classify(
+          'cross-paragraph selection',
+          '<p>first paragraph</p><p>second paragraph</p>', [0, 2, 1, 6],
+          'validateSelection',
+          { valid: false, reason: 'crossesBlockBoundary', messageKey: 'selectionMustStayInOneBlock' }
+        );
+        await classify(
+          'cross-cell selection',
+          '<table><tbody><tr><td>first cell</td><td>second cell</td></tr></tbody></table>',
+          [0, 2, 1, 6], 'validateSelection',
+          { valid: false, reason: 'crossesTableCellBoundary', messageKey: 'selectionMustStayInOneTableCell' }
+        );
+        await classify(
+          'partial tooltip boundary overlap',
+          '<p>Before <span class="papijo-tooltip" data-papijo-tooltip="Existing">tooltip</span> after</p>',
+          [0, 2, 0, 10], 'validateSelection',
+          { valid: false, reason: 'crossesTooltipBoundary', messageKey: 'selectionCrossesTooltipBoundary' }
+        );
+        await classify(
+          'complete tooltip plus ordinary text',
+          '<p>Before <span class="papijo-tooltip" data-papijo-tooltip="Existing">tooltip</span> after</p>',
+          [0, 0, 0, 20], 'validateSelection',
+          { valid: false, reason: 'containsTooltip', messageKey: 'selectionContainsTooltip' }
+        );
+        await classify(
+          'adjacent distinct tooltips',
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="First">first</span><span class="papijo-tooltip" data-papijo-tooltip="Second">second</span></p>',
+          [0, 2, 0, 8], 'validateSelection',
+          { valid: false, reason: 'multipleTooltips', messageKey: 'selectionContainsMultipleTooltips' }
+        );
+        await classify(
+          'formatted multi-run selection',
+          '<p>selected <strong>formatted</strong> words</p>', [0, 0, 0, 24],
+          'validateSelection',
+          { valid: true, reason: 'ordinarySelection' }
+        );
+        await classify(
+          'same-cell table selection',
+          '<table><tbody><tr><td>several selected words here</td></tr></tbody></table>',
+          [0, 0, 0, 22], 'validateSelection',
+          { valid: true, reason: 'ordinarySelection' }
+        );
+
+        assert(results.length === 10, 'Expected 10 results, got ' + results.length);
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'PASS', count: results.length, results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'pass';
+      }
+      catch (error) {
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'FAIL', message: error.message, stack: error.stack,
+          count: results.length, results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'fail';
+      }
+    })();
+  </script>
+</body>
+</html>

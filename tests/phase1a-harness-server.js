@@ -14,6 +14,10 @@ const routes = {
   '/phase1d-runtime.html': path.join(__dirname, 'phase1d-runtime-harness.html'),
   '/phase1f-editor.html': path.join(__dirname, 'phase1f-editor-harness.html'),
   '/phase1f-runtime.html': path.join(__dirname, 'phase1f-runtime-harness.html'),
+  '/r0-characterization.html': path.join(__dirname, 'r0-characterization-harness.html'),
+  '/r2-lifecycle.html': path.join(__dirname, 'r2-editor-lifecycle-harness.html'),
+  '/r3-selection-classifier.html': path.join(__dirname, 'r3-selection-classifier-harness.html'),
+  '/r5-runtime-lifecycle.html': path.join(__dirname, 'r5-runtime-lifecycle-harness.html'),
   '/jquery.js': 'C:\\my_first_h5p_environment\\libraries\\h5p-php-library\\js\\jquery.js',
   '/ckeditor.js': 'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\ckeditor\\ckeditor.js',
   '/h5peditor-html.js': 'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\scripts\\h5peditor-html.js',
@@ -21,6 +25,11 @@ const routes = {
     root,
     'editor',
     'advanced-text-papijo-tooltip.js'
+  ),
+  '/advanced-text-papijo-tooltip-selection.js': path.join(
+    root,
+    'editor',
+    'advanced-text-papijo-tooltip-selection.js'
   ),
   '/advanced-text-papijo-tooltip-sanitizer.js': path.join(
     root,

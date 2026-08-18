@@ -16,6 +16,8 @@
     var self = this;
     self.root = root;
     self.trigger = trigger;
+    self.animationFrame = null;
+    self.resizeObserver = null;
 
     self.element = document.createElement('div');
     self.element.id = id;
@@ -43,7 +45,8 @@
     }
 
     self.position();
-    window.requestAnimationFrame(function () {
+    self.animationFrame = window.requestAnimationFrame(function () {
+      self.animationFrame = null;
       if (self.element) {
         self.element.classList.add('papijo-runtime-speech-bubble-show');
       }
@@ -94,8 +97,13 @@
 
   AdvancedTextPapiJoSpeechBubble.prototype.remove = function () {
     window.removeEventListener('resize', this.boundPosition);
+    if (this.animationFrame !== null) {
+      window.cancelAnimationFrame(this.animationFrame);
+      this.animationFrame = null;
+    }
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
+      this.resizeObserver = null;
     }
     if (this.element) {
       this.element.remove();

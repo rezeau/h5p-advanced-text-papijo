@@ -16,6 +16,10 @@ const widgetSource = fs.readFileSync(
   path.join(root, 'editor', 'advanced-text-papijo-tooltip.js'),
   'utf8'
 );
+const selectionSource = fs.readFileSync(
+  path.join(root, 'editor', 'advanced-text-papijo-tooltip-selection.js'),
+  'utf8'
+);
 const runtimeSanitizerSource = fs.readFileSync(
   path.join(root, 'advanced-text-papijo-tooltip-sanitizer.js'),
   'utf8'
@@ -45,6 +49,7 @@ function createWidget() {
     widgets: {},
     t: (_library, key) => english.libraryStrings[key]
   };
+  vm.runInNewContext(selectionSource, { H5PEditor });
   vm.runInNewContext(widgetSource, { H5PEditor });
 
   return new H5PEditor.widgets.advancedTextPapiJoTooltip(
@@ -85,6 +90,19 @@ test('registers the tooltip command plugin and sanitizer contract', () => {
   assert.equal(commandPlugins.length, 1);
   assert.equal(typeof widget.constructor.validateTooltipText, 'function');
   assert.equal(runtimeSanitizerSource, editorSanitizerSource);
+});
+
+test('loads the selection classifier before the widget', () => {
+  const widget = createWidget();
+
+  assert.equal(
+    typeof widget.constructor.detectExistingTooltip,
+    'function'
+  );
+  assert.equal(
+    typeof widget.constructor.validateSelection,
+    'function'
+  );
 });
 
 test('declares model commands for create, edit, and remove', () => {
@@ -144,6 +162,7 @@ test('declares the widget, span tag, dependency, and release versions', () => {
   ]);
   assert.deepEqual(editorLibrary.preloadedJs, [
     { path: 'advanced-text-papijo-tooltip-sanitizer.js' },
+    { path: 'advanced-text-papijo-tooltip-selection.js' },
     { path: 'advanced-text-papijo-tooltip.js' }
   ]);
   assert.deepEqual(library.preloadedCss, [

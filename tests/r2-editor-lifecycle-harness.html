@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AdvancedTextPapiJo R2 editor lifecycle verification</title>
+  <script src="/jquery.js"></script>
+  <script>
+    window.H5PIntegration = { editor: { wysiwygButtons: [] } };
+    window.H5PEditor = {
+      $: window.H5P.jQuery,
+      widgets: {},
+      language: {},
+      bindImportantDescriptionEvents: function () {},
+      createFieldMarkup: function (_field, input, id) {
+        return '<div class="h5peditor-field" data-field-id="' + id + '">' +
+          input + '<div class="h5p-errors"></div></div>';
+      },
+      createImportantDescription: function () { return ''; },
+      getDescriptionId: function (id) { return id + '-description'; },
+      getNextFieldId: (function () {
+        let fieldId = 0;
+        return function () { return 'r2-field-' + (++fieldId); };
+      })(),
+      t: function (library, key) {
+        const translations = this.language[library];
+        return translations && translations.libraryStrings ?
+          translations.libraryStrings[key] : key;
+      }
+    };
+    window.ns = window.H5PEditor;
+  </script>
+  <script src="/ckeditor.js"></script>
+  <script src="/h5peditor-html.js"></script>
+  <script src="/advanced-text-papijo-tooltip-sanitizer.js"></script>
+  <script src="/advanced-text-papijo-tooltip-selection.js"></script>
+  <script src="/advanced-text-papijo-tooltip.js"></script>
+</head>
+<body>
+  <div id="fixture"></div>
+  <pre id="result">RUNNING</pre>
+  <script>
+    (async function () {
+      const LIBRARY = 'H5PEditor.AdvancedTextPapiJoTooltip';
+      const $ = H5P.jQuery;
+      const fixture = $('#fixture');
+      const results = [];
+      let nextId = 0;
+
+      const [fieldDefinitions, english] = await Promise.all([
+        fetch('/semantics.json').then(function (response) { return response.json(); }),
+        fetch('/language/en.json').then(function (response) { return response.json(); })
+      ]);
+      H5PEditor.language[LIBRARY] = english;
+
+      function assert(condition, message) {
+        if (!condition) {
+          throw new Error(message);
+        }
+      }
+
+      function record(name) {
+        results.push({ name: name });
+      }
+
+      function createWidget(html) {
+        return new H5PEditor.AdvancedTextPapiJoTooltip(
+          {}, JSON.parse(JSON.stringify(fieldDefinitions[0])), html,
+          function () {}
+        );
+      }
+
+      function instrumentRefresh(widget) {
+        const originalRefresh = widget.refreshTooltipActions;
+        widget.r2RefreshCount = 0;
+        widget.refreshTooltipActions = function (selection) {
+          widget.r2RefreshCount++;
+          return originalRefresh.call(widget, selection);
+        };
+      }
+
+      async function createContext(html, widget) {
+        const $item = $('<div>', {
+          id: 'r2-item-' + (++nextId),
+          'class': 'advanced-text-item'
+        }).appendTo(fixture);
+        const host = document.createElement('div');
+        host.className = 'editor-host';
+        host.innerHTML = html;
+        $item.append(host);
+        widget = widget || createWidget(html);
+        if (widget.r2RefreshCount === undefined) {
+          instrumentRefresh(widget);
+        }
+        widget.$item = $item;
+        const editor = await ClassicEditor.create(host, widget.getCKEditorConfig());
+        widget.ckeditor = editor;
+        widget.$input = $(host);
+        widget.$errors = $('<div>');
+        widget.addTooltipAuthoringControls();
+        return { editor: editor, host: host, widget: widget, $item: $item };
+      }
+
+      function setSelection(editor, start, end) {
+        const block = editor.model.document.getRoot().getChild(0);
+        editor.model.change(function (writer) {
+          writer.setSelection(writer.createRange(
+            writer.createPositionAt(block, start),
+            writer.createPositionAt(block, end)
+          ));
+        });
+      }
+
+      function triggerButton($button) {
+        $button.trigger($.Event('mousedown'));
+        $button.trigger('click');
+      }
+
+      try {
+        const original = await createContext('<p>Original editor text</p>');
+        original.widget.r2RefreshCount = 0;
+        setSelection(original.editor, 0, 8);
+        assert(
+          original.widget.r2RefreshCount === 1,
+          'Initial editor did not have exactly one custom selection listener'
+        );
+        record('initial editor has one custom selection listener');
+
+        original.widget.bindTooltipSelectionUpdates(original.editor);
+        original.widget.bindTooltipSelectionUpdates(original.editor);
+        original.widget.r2RefreshCount = 0;
+        setSelection(original.editor, 1, 9);
+        assert(
+          original.widget.r2RefreshCount === 1,
+          'Repeated binding added a duplicate custom selection listener'
+        );
+        record('repeated binding remains single-listener');
+
+        const oldEditor = original.editor;
+        const $oldItem = original.$item.detach();
+        const $oldCreateButton = original.widget.$createTooltipButton;
+        const $oldForm = original.widget.$tooltipForm;
+        let externalOldControlClicks = 0;
+        $oldCreateButton.on('click.r2External', function () {
+          externalOldControlClicks++;
+        });
+        const replacement = await createContext(
+          '<p>Replacement editor text</p>',
+          original.widget
+        );
+        assert(
+          replacement.widget.tooltipSelectionEditor === replacement.editor,
+          'Replacement editor did not become listener owner'
+        );
+        replacement.widget.r2RefreshCount = 0;
+        setSelection(oldEditor, 2, 10);
+        assert(
+          replacement.widget.r2RefreshCount === 0,
+          'Old editor selection still reached the widget after rebinding'
+        );
+        assert(
+          $oldForm.prop('hidden'),
+          'Replacement unexpectedly changed the old form state'
+        );
+        record('rebinding disconnects old editor listener');
+
+        setSelection(replacement.editor, 0, 11);
+        assert(
+          replacement.widget.r2RefreshCount === 1,
+          'Replacement editor did not receive exactly one listener'
+        );
+        record('replacement editor receives one listener');
+
+        $oldCreateButton.trigger('click');
+        assert($oldForm.prop('hidden'), 'Old replaced controls retained owned click handlers');
+        assert(
+          externalOldControlClicks === 1,
+          'Replacement removed a non-widget event namespace from old controls'
+        );
+        assert(
+          replacement.$item.find('.papijo-tooltip-authoring-controls').length === 1,
+          'Replacement did not receive exactly one control group'
+        );
+        record('replacement transfers control-handler ownership');
+
+        replacement.widget.r2RefreshCount = 0;
+        setSelection(replacement.editor, 0, 11);
+        triggerButton(replacement.widget.$createTooltipButton);
+        assert(!replacement.widget.$tooltipForm.prop('hidden'), 'Create form did not open after replacement');
+        replacement.widget.$tooltipInput.val('Created after replacement');
+        replacement.widget.$tooltipForm.trigger('submit');
+        let output = replacement.editor.getData();
+        assert(
+          output.includes('data-papijo-tooltip="Created after replacement"'),
+          'Create failed after replacement'
+        );
+        assert(output.includes('>Replacement</span>'), 'Preserved selection changed after replacement');
+        record('create and selection preservation after replacement');
+
+        setSelection(replacement.editor, 2, 6);
+        triggerButton(replacement.widget.$editTooltipButton);
+        replacement.widget.$tooltipInput.val('Edited after replacement');
+        replacement.widget.$tooltipForm.trigger('submit');
+        output = replacement.editor.getData();
+        assert(
+          output.includes('data-papijo-tooltip="Edited after replacement"'),
+          'Edit failed after replacement'
+        );
+        setSelection(replacement.editor, 2, 6);
+        triggerButton(replacement.widget.$removeTooltipButton);
+        output = replacement.editor.getData();
+        assert(!output.includes('papijo-tooltip'), 'Remove failed after replacement');
+        assert(output === '<p>Replacement editor text</p>', 'Remove changed visible replacement text');
+        record('edit and remove after replacement');
+
+        const independent = await createContext('<p>Independent editor text</p>');
+        replacement.widget.r2RefreshCount = 0;
+        independent.widget.r2RefreshCount = 0;
+        setSelection(independent.editor, 0, 11);
+        assert(independent.widget.r2RefreshCount === 1, 'Independent listener did not run');
+        assert(replacement.widget.r2RefreshCount === 0, 'Independent selection reached replacement widget');
+        replacement.widget.remove();
+        const independentCount = independent.widget.r2RefreshCount;
+        setSelection(independent.editor, 1, 12);
+        assert(
+          independent.widget.r2RefreshCount === independentCount + 1,
+          'Removing another widget removed the independent listener'
+        );
+        triggerButton(independent.widget.$createTooltipButton);
+        assert(!independent.widget.$tooltipForm.prop('hidden'), 'Removing another widget removed independent handlers');
+        independent.widget.closeTooltipForm(false);
+        record('multiple instances retain independent ownership');
+
+        const removedRefreshCount = replacement.widget.r2RefreshCount;
+        setSelection(replacement.editor, 1, 8);
+        assert(
+          replacement.widget.r2RefreshCount === removedRefreshCount,
+          'Removed widget listener still fired'
+        );
+        assert(replacement.widget.$tooltipControls === null, 'Removed widget retained control references');
+        record('remove hook clears listener, handlers, and control references');
+
+        const $accordion = $('<div>', { 'class': 'accordion-editor' }).appendTo(fixture);
+        const accordionOld = await createContext('<p>Accordion old item</p>');
+        accordionOld.$item.appendTo($accordion);
+        const accordionOldCount = accordionOld.widget.r2RefreshCount;
+        accordionOld.widget.remove();
+        setSelection(accordionOld.editor, 0, 9);
+        assert(
+          accordionOld.widget.r2RefreshCount === accordionOldCount,
+          'Removed Accordion-style item retained listener'
+        );
+        const accordionNew = await createContext('<p>Accordion replacement item</p>');
+        accordionNew.$item.appendTo($accordion);
+        assert(
+          accordionNew.$item.find('.papijo-tooltip-authoring-controls').length === 1,
+          'Accordion replacement controls missing or duplicated'
+        );
+        setSelection(accordionNew.editor, 0, 9);
+        triggerButton(accordionNew.widget.$createTooltipButton);
+        assert(!accordionNew.widget.$tooltipForm.prop('hidden'), 'Accordion replacement controls were inactive');
+        accordionNew.widget.closeTooltipForm(false);
+        record('Accordion-style list item removal and replacement');
+
+        const $appendWrapper = $('<div>', { 'class': 'append-wrapper' }).appendTo(fixture);
+        const appendWidget = createWidget('<p>Repeated append text</p>');
+        appendWidget.appendTo($appendWrapper);
+        const $firstAppendButton = appendWidget.$createTooltipButton;
+        const $firstAppendForm = appendWidget.$tooltipForm;
+        appendWidget.appendTo($appendWrapper);
+        assert(
+          $appendWrapper.find('.h5peditor-field').length === 2 &&
+          $appendWrapper.find('.papijo-tooltip-authoring-controls').length === 2,
+          'Base repeated appendTo behavior changed'
+        );
+        $firstAppendButton.trigger('click');
+        assert($firstAppendForm.prop('hidden'), 'Previous append controls retained custom handlers');
+        assert(
+          appendWidget.$item.find('.papijo-tooltip-authoring-controls').length === 1,
+          'Current append item duplicated controls'
+        );
+        record('base repeated appendTo remains append-only with old custom handlers released');
+
+        await oldEditor.destroy();
+        await replacement.editor.destroy();
+        independent.widget.remove();
+        await independent.editor.destroy();
+        await accordionOld.editor.destroy();
+        accordionNew.widget.remove();
+        await accordionNew.editor.destroy();
+        $oldItem.remove();
+        $accordion.remove();
+        $appendWrapper.remove();
+
+        assert(results.length === 11, 'Expected 11 R2 results, got ' + results.length);
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'PASS', count: results.length, results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'pass';
+      }
+      catch (error) {
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'FAIL', message: error.message, stack: error.stack,
+          count: results.length, results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'fail';
+      }
+    })();
+  </script>
+</body>
+</html>

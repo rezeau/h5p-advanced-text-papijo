@@ -38,6 +38,7 @@
   <script src="/accordion.js"></script>
   <script src="/ckeditor.js"></script>
   <script src="/h5peditor-html.js"></script>
+  <script src="/advanced-text-papijo-tooltip-selection.js"></script>
   <script src="/advanced-text-papijo-tooltip.js"></script>
 </head>
 <body>
@@ -164,6 +165,7 @@
         assert(autocompleteMethodCalls === 0, 'Multiple instances invoked autocomplete');
         record('multiple nested AdvancedText instances remain independent');
 
+        widgetOne.remove();
         await editorOne.destroy();
         $('#panel-one').remove();
         $('.accordion-editor').append(

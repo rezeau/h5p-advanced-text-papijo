@@ -7,29 +7,11 @@
   var REMOVE_COMMAND = 'removePapijoTooltip';
   var TOOLTIP_CLASS = 'papijo-tooltip';
   var TOOLTIP_ATTRIBUTE = 'data-papijo-tooltip';
+  var AUTHORING_EVENT_NAMESPACE = '.advancedTextPapiJoTooltip';
   var authoringUiId = 0;
 
   function translate(key) {
     return H5PEditor.t(LIBRARY_NAME, key);
-  }
-
-  function getTooltipModelAttributeName(editor) {
-    return editor.plugins.get('GeneralHtmlSupport')
-      .getGhsAttributeNameForElement('span');
-  }
-
-  function isPapijoTooltipAttribute(value) {
-    return value && Array.isArray(value.classes) &&
-      value.classes.indexOf(TOOLTIP_CLASS) !== -1;
-  }
-
-  function getTooltipText(value) {
-    if (!isPapijoTooltipAttribute(value) || !value.attributes ||
-        typeof value.attributes[TOOLTIP_ATTRIBUTE] !== 'string' ||
-        value.attributes[TOOLTIP_ATTRIBUTE].trim() === '') {
-      return null;
-    }
-    return value.attributes[TOOLTIP_ATTRIBUTE];
   }
 
   function createTooltipValue(text) {
@@ -54,206 +36,30 @@
     return { valid: true, text: text };
   }
 
-  function findAncestor(node, name) {
-    while (node) {
-      if (node.name === name) {
-        return node;
-      }
-      node = node.parent;
+  function localizeSelectionResult(result) {
+    if (result.messageKey) {
+      result.message = translate(result.messageKey);
+      delete result.messageKey;
     }
-    return null;
-  }
-
-  function findBlockAncestor(editor, node) {
-    while (node) {
-      if (editor.model.schema.isBlock(node)) {
-        return node;
-      }
-      node = node.parent;
-    }
-    return null;
-  }
-
-  function getSelectionStructure(editor, selection, allowCollapsed) {
-    if (!selection || (!allowCollapsed && selection.isCollapsed)) {
-      return {
-        valid: false,
-        reason: 'emptySelection',
-        message: translate('selectTextBeforeCreating')
-      };
-    }
-
-    var ranges = Array.from(selection.getRanges());
-    if (ranges.length !== 1) {
-      return {
-        valid: false,
-        reason: 'crossesBlockBoundary',
-        message: translate('selectionMustStayInOneBlock')
-      };
-    }
-
-    var range = ranges[0];
-    var startCell = findAncestor(range.start.parent, 'tableCell');
-    var endCell = findAncestor(range.end.parent, 'tableCell');
-    var selectedCells = Array.from(range.getItems()).filter(function (item) {
-      return item.name === 'tableCell';
-    });
-    if (startCell !== endCell || selectedCells.length > 1) {
-      return {
-        valid: false,
-        reason: 'crossesTableCellBoundary',
-        message: translate('selectionMustStayInOneTableCell')
-      };
-    }
-
-    var startBlock = findBlockAncestor(editor, range.start.parent);
-    var endBlock = findBlockAncestor(editor, range.end.parent);
-    if (!startBlock || startBlock !== endBlock) {
-      return {
-        valid: false,
-        reason: 'crossesBlockBoundary',
-        message: translate('selectionMustStayInOneBlock')
-      };
-    }
-
-    return { valid: true, range: range, block: startBlock };
-  }
-
-  function getTooltipSegments(parent, attributeName) {
-    return Array.from(parent.getChildren()).map(function (child) {
-      var value = child.hasAttribute ? child.getAttribute(attributeName) : null;
-      return {
-        end: child.startOffset + child.offsetSize,
-        isTooltip: isPapijoTooltipAttribute(value),
-        start: child.startOffset,
-        text: getTooltipText(value)
-      };
-    });
+    return result;
   }
 
   function detectExistingTooltip(editor, selection) {
-    var structure = getSelectionStructure(editor, selection, true);
-    if (!structure.valid) {
-      structure.kind = 'invalid';
-      return structure;
-    }
-
-    var range = structure.range;
-    var attributeName = getTooltipModelAttributeName(editor);
-    var segments = getTooltipSegments(structure.block, attributeName);
-    var matchingSegments;
-
-    if (selection.isCollapsed) {
-      matchingSegments = segments.filter(function (segment) {
-        return segment.isTooltip && segment.start <= range.start.offset &&
-          segment.end >= range.start.offset;
-      });
-    }
-    else {
-      matchingSegments = segments.filter(function (segment) {
-        return segment.end > range.start.offset &&
-          segment.start < range.end.offset;
-      });
-    }
-
-    var tooltipSegments = matchingSegments.filter(function (segment) {
-      return segment.isTooltip;
-    });
-    if (tooltipSegments.length === 0) {
-      return { valid: false, kind: 'ordinary', reason: 'ordinarySelection' };
-    }
-    if (tooltipSegments.some(function (segment) {
-      return segment.text === null;
-    })) {
-      return {
-        valid: false,
-        kind: 'invalid',
-        reason: 'malformedTooltip',
-        message: translate('selectionCannotOverlapTooltip')
-      };
-    }
-
-    var tooltipTexts = tooltipSegments.reduce(function (texts, segment) {
-      if (texts.indexOf(segment.text) === -1) {
-        texts.push(segment.text);
-      }
-      return texts;
-    }, []);
-
-    if (tooltipTexts.length !== 1) {
-      return {
-        valid: false,
-        kind: 'invalid',
-        reason: 'multipleTooltips',
-        message: translate('selectionContainsMultipleTooltips')
-      };
-    }
-
-    var tooltipText = tooltipTexts[0];
-    var matchingIndexes = tooltipSegments.map(function (segment) {
-      return segments.indexOf(segment);
-    });
-    var firstIndex = Math.min.apply(null, matchingIndexes);
-    var lastIndex = Math.max.apply(null, matchingIndexes);
-    while (firstIndex > 0 && segments[firstIndex - 1].text === tooltipText) {
-      firstIndex--;
-    }
-    while (lastIndex < segments.length - 1 &&
-        segments[lastIndex + 1].text === tooltipText) {
-      lastIndex++;
-    }
-
-    var tooltipStart = segments[firstIndex].start;
-    var tooltipEnd = segments[lastIndex].end;
-    if (!selection.isCollapsed && tooltipSegments.length !== matchingSegments.length) {
-      var containsTooltip = range.start.offset <= tooltipStart &&
-        range.end.offset >= tooltipEnd;
-      return {
-        valid: false,
-        kind: 'invalid',
-        reason: containsTooltip ? 'containsTooltip' : 'crossesTooltipBoundary',
-        message: translate(
-          containsTooltip ? 'selectionContainsTooltip' : 'selectionCrossesTooltipBoundary'
-        )
-      };
-    }
-
-    return {
-      valid: true,
-      kind: 'tooltip',
-      reason: 'existingTooltip',
-      attributeName: attributeName,
-      range: editor.model.createRange(
-        editor.model.createPositionAt(structure.block, tooltipStart),
-        editor.model.createPositionAt(structure.block, tooltipEnd)
-      ),
-      selectionRanges: Array.from(selection.getRanges()),
-      text: tooltipText
-    };
+    return localizeSelectionResult(
+      H5PEditor.AdvancedTextPapiJoTooltipSelection.detectExistingTooltip(
+        editor,
+        selection
+      )
+    );
   }
 
   function validateSelection(editor, selection) {
-    var structure = getSelectionStructure(editor, selection, false);
-    if (!structure.valid) {
-      return structure;
-    }
-
-    var range = structure.range;
-    var attributeName = getTooltipModelAttributeName(editor);
-    var tooltipState = detectExistingTooltip(editor, selection);
-    if (tooltipState.kind !== 'ordinary') {
-      return {
-        valid: false,
-        reason: tooltipState.reason,
-        message: tooltipState.message || translate('selectionCannotOverlapTooltip')
-      };
-    }
-    return {
-      valid: true,
-      reason: 'ordinarySelection',
-      ranges: [range],
-      attributeName: attributeName
-    };
+    return localizeSelectionResult(
+      H5PEditor.AdvancedTextPapiJoTooltipSelection.validateSelection(
+        editor,
+        selection
+      )
+    );
   }
 
   function TooltipCommand(editor, action) {
@@ -370,16 +176,32 @@
     self.ckeditor.editing.view.focus();
   };
 
+  AdvancedTextPapiJoTooltip.prototype.unbindTooltipSelectionUpdates = function () {
+    if (this.tooltipSelectionEditor && this.tooltipSelectionChangeHandler) {
+      this.tooltipSelectionEditor.model.document.selection.off(
+        'change:range',
+        this.tooltipSelectionChangeHandler
+      );
+    }
+    this.tooltipSelectionEditor = null;
+    this.tooltipSelectionChangeHandler = null;
+  };
+
   AdvancedTextPapiJoTooltip.prototype.bindTooltipSelectionUpdates = function (editor) {
     var self = this;
     if (self.tooltipSelectionEditor === editor) {
       self.refreshTooltipActions(editor.model.document.selection);
       return;
     }
+    self.unbindTooltipSelectionUpdates();
     self.tooltipSelectionEditor = editor;
-    editor.model.document.selection.on('change:range', function () {
+    self.tooltipSelectionChangeHandler = function () {
       self.refreshTooltipActions(editor.model.document.selection);
-    });
+    };
+    editor.model.document.selection.on(
+      'change:range',
+      self.tooltipSelectionChangeHandler
+    );
     self.refreshTooltipActions(editor.model.document.selection);
   };
 
@@ -431,12 +253,7 @@
     this.$tooltipInput.trigger('focus');
   };
 
-  AdvancedTextPapiJoTooltip.prototype.addTooltipAuthoringControls = function () {
-    var self = this;
-    if (self.$tooltipControls && self.$item &&
-        self.$tooltipControls.parent()[0] === self.$item[0]) {
-      return;
-    }
+  function createTooltipAuthoringElements(self) {
     var formId = 'papijo-tooltip-form-' + (++authoringUiId);
     self.$tooltipStatus = H5PEditor.$('<p>', {
       'class': 'papijo-tooltip-authoring-status', 'aria-live': 'polite'
@@ -478,15 +295,32 @@
       self.$removeTooltipButton, self.$tooltipForm, self.$tooltipStatus)
       .appendTo(self.$item);
 
+    return $cancel;
+  }
+
+  function unbindTooltipAuthoringHandlers(self) {
+    [self.$createTooltipButton, self.$editTooltipButton,
+      self.$removeTooltipButton, self.$tooltipForm].forEach(function ($element) {
+      if ($element) {
+        $element.off(AUTHORING_EVENT_NAMESPACE);
+      }
+    });
+    if (self.$tooltipForm) {
+      self.$tooltipForm.find('.papijo-tooltip-authoring-cancel')
+        .off(AUTHORING_EVENT_NAMESPACE);
+    }
+  }
+
+  function bindTooltipActionHandlers(self) {
     [self.$createTooltipButton, self.$editTooltipButton,
       self.$removeTooltipButton].forEach(function ($button) {
-      $button.on('mousedown', function (event) {
+      $button.on('mousedown' + AUTHORING_EVENT_NAMESPACE, function (event) {
         event.preventDefault();
         self.captureModelSelection();
       });
     });
 
-    self.$createTooltipButton.on('click', function () {
+    self.$createTooltipButton.on('click' + AUTHORING_EVENT_NAMESPACE, function () {
       var selection = self.preservedTooltipSelection || self.captureModelSelection();
       if (!self.ckeditor || !selection) {
         self.$tooltipStatus.text(translate('selectTextFirst'));
@@ -501,7 +335,7 @@
       self.openTooltipForm('create');
     });
 
-    self.$editTooltipButton.on('click', function () {
+    self.$editTooltipButton.on('click' + AUTHORING_EVENT_NAMESPACE, function () {
       var selection = self.preservedTooltipSelection || self.captureModelSelection();
       var detection = self.ckeditor && selection ?
         detectExistingTooltip(self.ckeditor, selection) : null;
@@ -514,7 +348,7 @@
       self.openTooltipForm('edit', detection.text);
     });
 
-    self.$removeTooltipButton.on('click', function () {
+    self.$removeTooltipButton.on('click' + AUTHORING_EVENT_NAMESPACE, function () {
       var selection = self.preservedTooltipSelection || self.captureModelSelection();
       var result = self.ckeditor && selection ?
         self.ckeditor.execute(REMOVE_COMMAND, { selection: selection }) : null;
@@ -529,8 +363,10 @@
       self.preservedTooltipSelection = null;
       self.refreshTooltipActions(self.ckeditor.model.document.selection);
     });
+  }
 
-    self.$tooltipForm.on('submit', function (event) {
+  function bindTooltipFormHandlers(self, $cancel) {
+    self.$tooltipForm.on('submit' + AUTHORING_EVENT_NAMESPACE, function (event) {
       event.preventDefault();
       var isEdit = self.tooltipFormMode === 'edit';
       var result = self.ckeditor.execute(isEdit ? EDIT_COMMAND : CREATE_COMMAND, {
@@ -547,14 +383,44 @@
       self.refreshTooltipActions(self.ckeditor.model.document.selection);
     });
 
-    $cancel.on('click', function () {
+    $cancel.on('click' + AUTHORING_EVENT_NAMESPACE, function () {
       self.$tooltipStatus.text('');
       self.closeTooltipForm(true);
       self.refreshTooltipActions(self.ckeditor.model.document.selection);
     });
+  }
+
+  AdvancedTextPapiJoTooltip.prototype.addTooltipAuthoringControls = function () {
+    var self = this;
+    if (self.$tooltipControls && self.$item &&
+        self.$tooltipControls.parent()[0] === self.$item[0]) {
+      return;
+    }
+    unbindTooltipAuthoringHandlers(self);
+    self.preservedTooltipSelection = null;
+    self.tooltipFormMode = null;
+    var $cancel = createTooltipAuthoringElements(self);
+    bindTooltipActionHandlers(self);
+    bindTooltipFormHandlers(self, $cancel);
     if (self.ckeditor) {
       self.bindTooltipSelectionUpdates(self.ckeditor);
     }
+  };
+
+  AdvancedTextPapiJoTooltip.prototype.remove = function () {
+    this.unbindTooltipSelectionUpdates();
+    unbindTooltipAuthoringHandlers(this);
+    H5PEditor.Html.prototype.remove.call(this);
+    this.$tooltipStatus = null;
+    this.$tooltipInput = null;
+    this.$tooltipApply = null;
+    this.$tooltipForm = null;
+    this.$createTooltipButton = null;
+    this.$editTooltipButton = null;
+    this.$removeTooltipButton = null;
+    this.$tooltipControls = null;
+    this.preservedTooltipSelection = null;
+    this.tooltipFormMode = null;
   };
 
   AdvancedTextPapiJoTooltip.detectExistingTooltip = detectExistingTooltip;

@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AdvancedTextPapiJo R0 characterization</title>
+  <script src="/jquery.js"></script>
+  <script>
+    window.H5P.EventDispatcher = function () {};
+    window.H5P.EventDispatcher.prototype = {};
+    window.H5PIntegration = { editor: { wysiwygButtons: [] } };
+    window.H5PEditor = {
+      $: window.H5P.jQuery,
+      widgets: {},
+      language: {},
+      bindImportantDescriptionEvents: function () {},
+      createFieldMarkup: function (_field, input, id) {
+        return '<div class="h5peditor-field" data-field-id="' + id + '">' +
+          input + '<div class="h5p-errors"></div></div>';
+      },
+      createImportantDescription: function () { return ''; },
+      getDescriptionId: function (id) { return id + '-description'; },
+      getNextFieldId: (function () {
+        let fieldId = 0;
+        return function () { return 'r0-field-' + (++fieldId); };
+      })(),
+      t: function (library, key) {
+        const translations = this.language[library];
+        return translations && translations.libraryStrings ?
+          translations.libraryStrings[key] : key;
+      }
+    };
+    window.ns = window.H5PEditor;
+  </script>
+  <script src="/advanced-text-papijo-tooltip-sanitizer.js"></script>
+  <script src="/advanced-text-papijo-speech-bubble.js"></script>
+  <script src="/advanced-text-papijo-tooltip-runtime.js"></script>
+  <script src="/ckeditor.js"></script>
+  <script src="/h5peditor-html.js"></script>
+  <script src="/advanced-text-papijo-tooltip-selection.js"></script>
+  <script src="/advanced-text-papijo-tooltip.js"></script>
+</head>
+<body>
+  <div id="editor-fixture"></div>
+  <div id="runtime-fixture"></div>
+  <pre id="result">RUNNING</pre>
+  <script>
+    (async function () {
+      const LIBRARY = 'H5PEditor.AdvancedTextPapiJoTooltip';
+      const $ = H5P.jQuery;
+      const editorFixture = $('#editor-fixture');
+      const runtimeFixture = document.getElementById('runtime-fixture');
+      const results = [];
+      let nextId = 0;
+
+      const [fieldDefinitions, english] = await Promise.all([
+        fetch('/semantics.json').then(function (response) { return response.json(); }),
+        fetch('/language/en.json').then(function (response) { return response.json(); })
+      ]);
+      H5PEditor.language[LIBRARY] = english;
+
+      function assert(condition, message) {
+        if (!condition) {
+          throw new Error(message);
+        }
+      }
+
+      function record(name, behavior) {
+        results.push({ name: name, behavior: behavior });
+      }
+
+      async function createEditorContext(html) {
+        const id = 'editor-item-' + (++nextId);
+        const $item = $('<div>', { id: id, 'class': 'advanced-text-item' });
+        const host = document.createElement('div');
+        host.className = 'editor-host';
+        host.innerHTML = html;
+        $item.append(host).appendTo(editorFixture);
+
+        const widget = new H5PEditor.AdvancedTextPapiJoTooltip(
+          {}, JSON.parse(JSON.stringify(fieldDefinitions[0])), html,
+          function () {}
+        );
+        widget.$item = $item;
+        const editor = await ClassicEditor.create(host, widget.getCKEditorConfig());
+        widget.ckeditor = editor;
+        widget.$input = $(host);
+        widget.$errors = $('<div>');
+        widget.bindTooltipSelectionUpdates(editor);
+        widget.addTooltipAuthoringControls();
+        return { editor: editor, host: host, widget: widget, $item: $item };
+      }
+
+      function setSelection(editor, start, end) {
+        const block = editor.model.document.getRoot().getChild(0);
+        editor.model.change(function (writer) {
+          writer.setSelection(writer.createRange(
+            writer.createPositionAt(block, start),
+            writer.createPositionAt(block, end)
+          ));
+        });
+      }
+
+      function click(element) {
+        element.dispatchEvent(new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true
+        }));
+      }
+
+      function settleMutations() {
+        return new Promise(function (resolve) {
+          window.setTimeout(resolve, 0);
+        });
+      }
+
+      function createRuntimeContext(html) {
+        const root = document.createElement('div');
+        root.className = 'runtime-characterization';
+        root.innerHTML = html;
+        runtimeFixture.appendChild(root);
+        const controller = new H5P.AdvancedTextPapiJoTooltipRuntime(root);
+        return { controller: controller, root: root };
+      }
+
+      try {
+        const $appendWrapper = $('<div>', { 'class': 'append-wrapper' }).appendTo(editorFixture);
+        const appendWidget = new H5PEditor.AdvancedTextPapiJoTooltip(
+          {}, JSON.parse(JSON.stringify(fieldDefinitions[0])),
+          '<p>Repeated append text</p>', function () {}
+        );
+        appendWidget.appendTo($appendWrapper);
+        assert(
+          $appendWrapper.find('.papijo-tooltip-authoring-controls').length === 1,
+          'First appendTo did not add one control group'
+        );
+        appendWidget.appendTo($appendWrapper);
+        assert(
+          appendWidget.$item.find('.papijo-tooltip-authoring-controls').length === 1,
+          'Current item received duplicate authoring controls'
+        );
+        assert(
+          $appendWrapper.find('.papijo-tooltip-authoring-controls').length === 2,
+          'Repeated appendTo wrapper behavior changed'
+        );
+        record(
+          'repeated appendTo lifecycle',
+          'Each appended item has one control group, but calling appendTo twice without clearing the wrapper leaves two complete field/control groups.'
+        );
+        $appendWrapper.remove();
+
+        const first = await createEditorContext('<p>First editor text</p>');
+        first.widget.addTooltipAuthoringControls();
+        first.widget.addTooltipAuthoringControls();
+        assert(
+          first.$item.find('.papijo-tooltip-authoring-controls').length === 1,
+          'Repeated addTooltipAuthoringControls duplicated controls'
+        );
+        record(
+          'repeated editor control initialization',
+          'Repeated calls retain exactly one authoring control group.'
+        );
+
+        const second = await createEditorContext('<p>Second editor text</p>');
+        assert(
+          first.widget.$tooltipForm.attr('id') !== second.widget.$tooltipForm.attr('id'),
+          'Editor instances reused an authoring form id'
+        );
+        setSelection(first.editor, 0, 5);
+        first.widget.$createTooltipButton.trigger($.Event('mousedown'));
+        first.widget.$createTooltipButton.trigger('click');
+        assert(!first.widget.$tooltipForm.prop('hidden'), 'First editor form did not open');
+        assert(second.widget.$tooltipForm.prop('hidden'), 'First editor changed second editor form');
+        first.widget.closeTooltipForm(false);
+        record(
+          'multiple editor instances',
+          'Instances use unique form ids and opening one form does not affect another.'
+        );
+
+        const originalRefresh = first.widget.refreshTooltipActions;
+        let detachedSelectionRefreshes = 0;
+        first.widget.refreshTooltipActions = function (selection) {
+          detachedSelectionRefreshes++;
+          return originalRefresh.call(this, selection);
+        };
+        const $detachedItem = first.$item.detach();
+        setSelection(first.editor, 1, 6);
+        assert(
+          detachedSelectionRefreshes > 0,
+          'Selection listener stopped when the editor item was detached'
+        );
+        first.widget.$createTooltipButton.trigger($.Event('mousedown'));
+        first.widget.$createTooltipButton.trigger('click');
+        assert(
+          !first.widget.$tooltipForm.prop('hidden'),
+          'Detached authoring controls lost their jQuery handlers'
+        );
+        assert(second.widget.$tooltipForm.prop('hidden'), 'Detached first editor affected second editor');
+        record(
+          'detached editor item lifecycle',
+          'The CKEditor selection listener and detached controls\' jQuery handlers remain active.'
+        );
+
+        first.widget.closeTooltipForm(false);
+        const refreshesBeforeRemoval = detachedSelectionRefreshes;
+        const $removedCreateButton = first.widget.$createTooltipButton;
+        const $removedForm = first.widget.$tooltipForm;
+        first.widget.remove();
+        $removedCreateButton.trigger('click');
+        assert(
+          $removedForm.prop('hidden'),
+          'Removed authoring controls retained their jQuery click handlers'
+        );
+        setSelection(first.editor, 2, 7);
+        assert(
+          detachedSelectionRefreshes === refreshesBeforeRemoval,
+          'CKEditor selection listener remained active after widget removal'
+        );
+        assert(first.widget.$tooltipControls === null, 'Removed widget retained control references');
+        record(
+          'removed editor item lifecycle',
+          'The widget remove hook disconnects its selection listener, removes owned control handlers, and clears control references.'
+        );
+
+        const replacement = await createEditorContext('<p>Replacement editor text</p>');
+        assert(
+          replacement.$item.find('.papijo-tooltip-authoring-controls').length === 1,
+          'Replacement editor did not receive exactly one control group'
+        );
+        assert(
+          replacement.widget.$tooltipForm.attr('id') !== second.widget.$tooltipForm.attr('id'),
+          'Replacement editor reused another instance form id'
+        );
+        record(
+          'replacement editor item',
+          'A replacement receives one independent control group and a unique form id.'
+        );
+
+        await first.editor.destroy();
+        await second.editor.destroy();
+        await replacement.editor.destroy();
+        second.$item.remove();
+        replacement.$item.remove();
+
+        const identical = await createEditorContext(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Same">first</span>' +
+          '<span class="papijo-tooltip" data-papijo-tooltip="Same">second</span></p>'
+        );
+        const identicalOutput = identical.editor.getData();
+        const outputContainer = document.createElement('div');
+        outputContainer.innerHTML = identicalOutput;
+        const blockChildren = Array.from(
+          identical.editor.model.document.getRoot().getChild(0).getChildren()
+        );
+        assert(
+          outputContainer.querySelectorAll('span.papijo-tooltip').length === 1,
+          'Adjacent identical metadata did not serialize as one tooltip span'
+        );
+        assert(blockChildren.length === 2, 'Initial adjacent model-run count changed');
+        assert(outputContainer.textContent === 'firstsecond', 'Merged tooltip changed visible text');
+        await identical.editor.destroy();
+        identical.$item.remove();
+        const reopenedIdentical = await createEditorContext(identicalOutput);
+        const reopenedChildren = Array.from(
+          reopenedIdentical.editor.model.document.getRoot().getChild(0).getChildren()
+        );
+        assert(reopenedChildren.length === 1, 'Serialized identical tooltip did not reopen as one model run');
+        record(
+          'adjacent identical CKEditor metadata',
+          'Initial input has two GHS text runs, but CKEditor serializes one span; save/reopen produces one model run.'
+        );
+        await reopenedIdentical.editor.destroy();
+        reopenedIdentical.$item.remove();
+
+        let runtime = createRuntimeContext(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Lifecycle">trigger</span></p>'
+        );
+        assert(runtime.controller.initialize() === 1, 'Runtime did not initialize');
+        let trigger = runtime.root.querySelector('.papijo-tooltip');
+        click(trigger);
+        assert(runtime.root.querySelector('.papijo-runtime-speech-bubble'), 'Runtime bubble did not open');
+        runtime.controller.destroy();
+        assert(!runtime.root.querySelector('.papijo-runtime-speech-bubble'), 'Destroy retained open bubble');
+        assert(!trigger.classList.contains('papijo-runtime-tooltip-trigger'), 'Destroy retained trigger class');
+        assert(!trigger.hasAttribute('role') && !trigger.hasAttribute('tabindex'), 'Destroy retained accessibility attributes');
+        runtime.controller = new H5P.AdvancedTextPapiJoTooltipRuntime(runtime.root);
+        assert(runtime.controller.initialize() === 1, 'Destroyed runtime could not be reinitialized');
+        click(trigger);
+        assert(
+          runtime.root.querySelectorAll('.papijo-runtime-speech-bubble').length === 1,
+          'Reinitialized runtime duplicated bubbles'
+        );
+        runtime.controller.destroy();
+        runtime.root.remove();
+        record(
+          'destroy and reinitialize open runtime',
+          'Destroy closes the bubble and restores the trigger; a new controller initializes it once.'
+        );
+
+        runtime = createRuntimeContext(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Detached root">trigger</span></p>'
+        );
+        runtime.controller.initialize();
+        trigger = runtime.root.querySelector('.papijo-tooltip');
+        click(trigger);
+        runtime.root.remove();
+        await settleMutations();
+        assert(runtime.controller.activeState === null, 'Root removal retained controller state');
+        assert(!trigger.hasAttribute('aria-expanded'), 'Root removal retained expanded trigger state');
+        assert(
+          runtime.root.querySelector('.papijo-runtime-speech-bubble') === null,
+          'Root removal retained the bubble in the detached root tree'
+        );
+        assert(runtime.controller.states.length === 0, 'Root removal retained tooltip states');
+        assert(!runtime.controller.outsidePointerAttached, 'Root removal retained outside-pointer listener');
+        assert(runtime.controller.connectionObserver === null, 'Root removal retained connection observer');
+        record(
+          'root removal while tooltip is open',
+          'Removing the root automatically destroys controller state, removes the bubble, restores the trigger, and releases owned listeners and observers.'
+        );
+
+        runtime = createRuntimeContext(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Owned">trigger</span></p>'
+        );
+        assert(runtime.controller.initialize() === 1, 'Owner controller initialization failed');
+        assert(runtime.controller.initialize() === 1, 'Repeated owner initialization changed state count');
+        const competingController = new H5P.AdvancedTextPapiJoTooltipRuntime(runtime.root);
+        assert(competingController.initialize() === 0, 'WeakMap allowed a second controller to own the trigger');
+        trigger = runtime.root.querySelector('.papijo-tooltip');
+        click(trigger);
+        assert(runtime.root.querySelectorAll('.papijo-runtime-speech-bubble').length === 1, 'Owner added duplicate handlers');
+        runtime.controller.destroy();
+        assert(competingController.initialize() === 1, 'Trigger was not claimable after owner destroy');
+        click(trigger);
+        assert(runtime.root.querySelectorAll('.papijo-runtime-speech-bubble').length === 1, 'New owner duplicated bubbles');
+        competingController.destroy();
+        runtime.root.remove();
+        record(
+          'runtime trigger ownership',
+          'One WeakMap owner initializes a trigger; ownership is released by destroy and can then transfer.'
+        );
+
+        const runtimeOne = createRuntimeContext(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="One">same</span></p>'
+        );
+        const runtimeTwo = createRuntimeContext(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Two">same</span></p>'
+        );
+        runtimeOne.controller.initialize();
+        runtimeTwo.controller.initialize();
+        click(runtimeOne.root.querySelector('.papijo-tooltip'));
+        click(runtimeTwo.root.querySelector('.papijo-tooltip'));
+        assert(runtimeOne.root.querySelector('.papijo-runtime-speech-bubble').textContent === 'One', 'First runtime instance changed');
+        assert(runtimeTwo.root.querySelector('.papijo-runtime-speech-bubble').textContent === 'Two', 'Second runtime instance changed');
+        runtimeOne.controller.destroy();
+        assert(runtimeTwo.root.querySelector('.papijo-runtime-speech-bubble'), 'Destroying first runtime closed second');
+        runtimeTwo.controller.destroy();
+        runtimeOne.root.remove();
+        runtimeTwo.root.remove();
+        record(
+          'separate runtime instances',
+          'Separate roots maintain independent active bubbles and destruction.'
+        );
+
+        runtime = createRuntimeContext(
+          '<p><a href="#shared-target">' +
+          '<span class="papijo-tooltip" data-papijo-tooltip="First">first</span> ' +
+          '<span class="papijo-tooltip" data-papijo-tooltip="Second">second</span>' +
+          '</a></p>'
+        );
+        assert(runtime.controller.initialize() === 2, 'Shared ancestor triggers did not initialize');
+        const sharedLink = runtime.root.querySelector('a');
+        const sharedTriggers = runtime.root.querySelectorAll('.papijo-tooltip');
+        const firstBubbleId = runtime.controller.states[0].bubbleId;
+        const secondBubbleId = runtime.controller.states[1].bubbleId;
+        assert(!sharedLink.hasAttribute('aria-controls'), 'Inactive shared control retained tooltip aria-controls');
+        sharedLink.focus();
+        assert(runtime.controller.activeState.trigger === sharedTriggers[0], 'Shared focus did not select the first trigger');
+        assert(runtime.root.querySelectorAll('.papijo-runtime-speech-bubble').length === 1, 'Shared activation opened multiple bubbles');
+        assert(runtime.root.querySelector('.papijo-runtime-speech-bubble').textContent === 'First', 'Shared focus opened unexpected content');
+        assert(sharedLink.getAttribute('aria-expanded') === 'true', 'Shared control did not expand');
+        assert(sharedLink.getAttribute('aria-controls') === firstBubbleId, 'Shared focus controls mismatch');
+        assert(sharedLink.getAttribute('aria-describedby') === firstBubbleId, 'Shared focus description mismatch');
+        sharedTriggers[1].dispatchEvent(new PointerEvent('pointerover', {
+          bubbles: true
+        }));
+        assert(runtime.controller.activeState.trigger === sharedTriggers[1], 'Shared pointer did not select its child trigger');
+        assert(sharedLink.getAttribute('aria-controls') === secondBubbleId, 'Shared pointer controls mismatch');
+        assert(sharedLink.getAttribute('aria-describedby') === secondBubbleId, 'Shared pointer description mismatch');
+        runtime.controller.destroy();
+        assert(!runtime.root.querySelector('.papijo-runtime-speech-bubble'), 'Shared cleanup retained bubble');
+        assert(!sharedTriggers[0].classList.contains('papijo-runtime-tooltip-trigger'), 'Shared cleanup retained first trigger class');
+        assert(!sharedTriggers[1].classList.contains('papijo-runtime-tooltip-trigger'), 'Shared cleanup retained second trigger class');
+        assert(!sharedLink.hasAttribute('aria-controls'), 'Shared cleanup retained aria-controls');
+        assert(!sharedLink.hasAttribute('aria-haspopup'), 'Shared cleanup retained aria-haspopup');
+        assert(!sharedLink.hasAttribute('aria-expanded'), 'Shared cleanup retained aria-expanded');
+        assert(!sharedLink.hasAttribute('aria-describedby'), 'Shared cleanup retained aria-describedby');
+        record(
+          'shared interactive ancestor',
+          'Both spans share one control owner; focus selects the first tooltip, pointer entry selects its child tooltip, and destroy restores the original ARIA state.'
+        );
+        runtime.root.remove();
+
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'PASS', count: results.length, results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'pass';
+      }
+      catch (error) {
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'FAIL', message: error.message, stack: error.stack,
+          count: results.length, results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'fail';
+      }
+    })();
+  </script>
+</body>
+</html>
