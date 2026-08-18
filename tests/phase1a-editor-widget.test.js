@@ -143,7 +143,7 @@ test('loads complete English and French editor translations', () => {
 test('declares the widget, span tag, dependency, and release versions', () => {
   assert.equal(semantics[0].widget, 'advancedTextPapiJoTooltip');
   assert.ok(semantics[0].tags.includes('span'));
-  assert.equal(library.patchVersion, 14);
+  assert.equal(library.patchVersion, 15);
   assert.deepEqual(library.editorDependencies, [{
     machineName: 'H5PEditor.AdvancedTextPapiJoTooltip',
     majorVersion: 1,

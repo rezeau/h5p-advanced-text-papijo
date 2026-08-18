@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.15
+
+- Changed the display title from "Text Papi Jo" to "Advanced Text Papi Jo".
+- Updated the library description to reflect rich text and author-defined tooltip support.
+- No runtime, editor, storage, dependency, or content-format behavior changed.
+
 ## 1.1.14
 
 - Added selection-based tooltip creation, editing, and removal to the Advanced Text editor, with English and French editor interfaces.
