@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.16
+
+- Added authoring-only commands to sort the current table column A → Z or Z → A.
+- Reorders only cell contents in the selected column; other columns and header rows remain unchanged.
+- Preserves formatting and PapiJo tooltip data, places empty values last, and supports undo/redo.
+
 ## 1.1.15
 
 - Changed the display title from "Text Papi Jo" to "Advanced Text Papi Jo".
