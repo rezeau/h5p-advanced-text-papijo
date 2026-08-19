@@ -132,6 +132,7 @@
   AdvancedTextPapiJoTooltip.prototype.getCKEditorConfig = function () {
     var self = this;
     var config = H5PEditor.Html.prototype.getCKEditorConfig.call(this);
+    var tableSort = H5PEditor.AdvancedTextPapiJoTableSort;
     if (config.plugins.indexOf('GeneralHtmlSupport') === -1) {
       config.plugins.push('GeneralHtmlSupport');
     }
@@ -142,8 +143,14 @@
       classes: [TOOLTIP_CLASS],
       attributes: { 'data-papijo-tooltip': true }
     });
+    if (tableSort) {
+      tableSort.extendConfig(config);
+    }
     config.plugins.push(function (editor) {
       PapijoTooltipEditing(editor);
+      if (tableSort) {
+        tableSort.install(editor);
+      }
       self.bindTooltipSelectionUpdates(editor);
     });
     return config;

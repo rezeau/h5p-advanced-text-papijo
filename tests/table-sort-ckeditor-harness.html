@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AdvancedTextPapiJo table sorting verification</title>
+  <script src="/jquery.js"></script>
+  <script>
+    window.H5PIntegration = { editor: { wysiwygButtons: [] } };
+    window.H5PEditor = {
+      $: window.H5P.jQuery,
+      widgets: {},
+      t: function (_library, key) { return key; }
+    };
+    window.ns = window.H5PEditor;
+  </script>
+  <script src="/ckeditor.js"></script>
+  <script src="/h5peditor-html.js"></script>
+  <script src="/advanced-text-papijo-tooltip-sanitizer.js"></script>
+  <script src="/advanced-text-papijo-tooltip-selection.js"></script>
+  <script src="/advanced-text-papijo-table-sort.js"></script>
+  <script src="/advanced-text-papijo-tooltip.js"></script>
+</head>
+<body>
+  <div id="fixture"></div>
+  <pre id="result">RUNNING</pre>
+  <script>
+    (async function () {
+      const ASCENDING = 'sortCurrentTableColumnAscending';
+      const DESCENDING = 'sortCurrentTableColumnDescending';
+      const fieldDefinition = (await fetch('/semantics.json').then(function (response) {
+        return response.json();
+      }))[0];
+      const fixture = document.getElementById('fixture');
+      const results = [];
+
+      function assert(condition, message) {
+        if (!condition) {
+          throw new Error(message);
+        }
+      }
+
+      function tableCells(html) {
+        var document = new DOMParser().parseFromString(html, 'text/html');
+        return Array.from(document.querySelectorAll('table tr')).map(function (row) {
+          return Array.from(row.querySelectorAll(':scope > th, :scope > td')).map(
+            function (cell) { return cell.innerHTML; }
+          );
+        });
+      }
+
+      function setCaretInCell(editor, row, column) {
+        var table = editor.model.document.getRoot().getChild(0);
+        var cell = table.getChild(row).getChild(column);
+        editor.model.change(function (writer) {
+          writer.setSelection(cell.getChild(0), 0);
+        });
+        return cell;
+      }
+
+      async function openEditor(html) {
+        fixture.innerHTML = '<div class="editor-host"></div>';
+        var host = fixture.querySelector('.editor-host');
+        host.innerHTML = html;
+        var field = JSON.parse(JSON.stringify(fieldDefinition));
+        var widget = new H5PEditor.AdvancedTextPapiJoTooltip(
+          {}, field, html, function () {}
+        );
+        var editor = await ClassicEditor.create(host, widget.getCKEditorConfig());
+        widget.ckeditor = editor;
+        return { editor: editor, widget: widget };
+      }
+
+      async function closeEditor(context) {
+        await context.editor.destroy();
+        fixture.innerHTML = '';
+      }
+
+      try {
+        var original = '<table><thead><tr><th>Animal</th><th>Code</th></tr></thead>' +
+          '<tbody><tr><td><span class="papijo-tooltip" data-papijo-tooltip="Striped cat">Tiger</span></td><td>A</td></tr>' +
+          '<tr><td>Bear</td><td>B</td></tr><tr><td>Zebra</td><td>C</td></tr>' +
+          '<tr><td>Camel</td><td>D</td></tr></tbody></table>';
+        var ascendingContext = await openEditor(original);
+        var selectedCell = setCaretInCell(ascendingContext.editor, 1, 0);
+        var before = ascendingContext.editor.getData();
+        var beforeCells = tableCells(before);
+
+        var toolbarItems = ascendingContext.editor.config.get('table.contentToolbar');
+        assert(toolbarItems.includes(ASCENDING) && toolbarItems.includes(DESCENDING),
+          'Sort controls were not added to the contextual table toolbar');
+        var ascendingButton = ascendingContext.editor.ui.componentFactory.create(ASCENDING);
+        assert(ascendingButton.isEnabled, 'Ascending toolbar button was disabled in a sortable column');
+        ascendingButton.destroy();
+
+        var ascendingResult = ascendingContext.editor.execute(ASCENDING);
+        var ascending = ascendingContext.editor.getData();
+        var ascendingCells = tableCells(ascending);
+        assert(ascendingResult && ascendingResult.valid, 'Ascending command was rejected');
+        assert(ascendingCells.map(function (row) { return row[0].replace(/<[^>]+>/g, ''); })
+          .join('|') === 'Animal|Bear|Camel|Tiger|Zebra',
+          'Ascending values were incorrect: ' + JSON.stringify(ascendingCells));
+        assert(ascendingCells[0][0] === beforeCells[0][0], 'Header cell changed');
+        assert(ascendingCells.map(function (row) { return row[1]; }).join('|') ===
+          beforeCells.map(function (row) { return row[1]; }).join('|'),
+          'A non-selected column changed');
+        assert(ascending.includes('class="papijo-tooltip"') &&
+          ascending.includes('data-papijo-tooltip="Striped cat"') &&
+          ascendingCells[3][0].includes('data-papijo-tooltip="Striped cat"'),
+          'PapiJo tooltip attributes did not move with their cell content');
+        assert(ascendingContext.editor.model.document.selection.getFirstPosition()
+          .findAncestor('tableCell') === selectedCell,
+          'The caret left the originally selected physical cell');
+        results.push({ name: 'ascending, isolation, header and tooltip', output: ascending });
+
+        ascendingContext.editor.execute('undo');
+        var undone = ascendingContext.editor.getData();
+        assert(undone === before, 'Undo did not restore the original column: ' + undone);
+        results.push({ name: 'undo', output: undone });
+        await closeEditor(ascendingContext);
+
+        var descendingContext = await openEditor(
+          '<table><tbody><tr><td>Tiger</td><td>A</td></tr>' +
+          '<tr><td>Bear</td><td>B</td></tr><tr><td>Zebra</td><td>C</td></tr>' +
+          '<tr><td>Camel</td><td>D</td></tr></tbody></table>'
+        );
+        setCaretInCell(descendingContext.editor, 0, 0);
+        var descendingResult = descendingContext.editor.execute(DESCENDING);
+        var descending = tableCells(descendingContext.editor.getData());
+        assert(descendingResult && descendingResult.valid, 'Descending command was rejected');
+        assert(descending.map(function (row) { return row[0]; }).join('|') ===
+          'Zebra|Tiger|Camel|Bear',
+          'Descending values were incorrect: ' + JSON.stringify(descending));
+        assert(descending.map(function (row) { return row[1]; }).join('|') === 'A|B|C|D',
+          'Descending sort changed another column');
+        results.push({ name: 'descending', output: descending });
+        await closeEditor(descendingContext);
+
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'PASS',
+          count: results.length,
+          results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'pass';
+      }
+      catch (error) {
+        document.getElementById('result').textContent = JSON.stringify({
+          status: 'FAIL',
+          message: error.message,
+          stack: error.stack,
+          results: results
+        }, null, 2);
+        document.documentElement.dataset.testStatus = 'fail';
+      }
+    })();
+  </script>
+</body>
+</html>

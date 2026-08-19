@@ -3,6 +3,8 @@
     "createTooltip": "Créer une infobulle",
     "editTooltip": "Modifier l’infobulle",
     "removeTooltip": "Supprimer l’infobulle",
+    "sortCurrentColumnAscending": "Trier la colonne actuelle de A → Z",
+    "sortCurrentColumnDescending": "Trier la colonne actuelle de Z → A",
     "tooltipText": "Texte de l’infobulle",
     "applyTooltip": "Appliquer l’infobulle",
     "updateTooltip": "Mettre à jour l’infobulle",

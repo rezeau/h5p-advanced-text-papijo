@@ -163,6 +163,7 @@ test('declares the widget, span tag, dependency, and release versions', () => {
   assert.deepEqual(editorLibrary.preloadedJs, [
     { path: 'advanced-text-papijo-tooltip-sanitizer.js' },
     { path: 'advanced-text-papijo-tooltip-selection.js' },
+    { path: 'advanced-text-papijo-table-sort.js' },
     { path: 'advanced-text-papijo-tooltip.js' }
   ]);
   assert.deepEqual(library.preloadedCss, [

@@ -3,6 +3,8 @@
     "createTooltip": "Create tooltip",
     "editTooltip": "Edit tooltip",
     "removeTooltip": "Remove tooltip",
+    "sortCurrentColumnAscending": "Sort current column A → Z",
+    "sortCurrentColumnDescending": "Sort current column Z → A",
     "tooltipText": "Tooltip text",
     "applyTooltip": "Apply tooltip",
     "updateTooltip": "Update tooltip",
