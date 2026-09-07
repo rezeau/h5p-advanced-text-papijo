@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0
+
+- Added H5P-managed images to AdvancedTextPapiJo tooltips.
+- Added support for text-only, image-only, and text-plus-image tooltips.
+- Added image alternative text and image replace/remove authoring.
+- Added managed image support in nested/compound H5P content.
+- Added responsive image sizing and bubble repositioning after image load.
+- Preserved existing tooltip sanitization and backward compatibility.
+- Added regression coverage for image lifecycle, nested content, and asynchronous image-widget callbacks.
+
 ## 1.1.16
 
 - Added authoring-only commands to sort the current table column A → Z or Z → A.
