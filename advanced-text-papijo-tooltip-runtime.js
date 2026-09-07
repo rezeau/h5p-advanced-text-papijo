@@ -5,6 +5,32 @@
   var initializedTriggers = new WeakMap();
   var INTERACTIVE_SELECTOR = 'a[href],button,input,select,textarea,[tabindex]';
 
+  function isManagedImagePath(path) {
+    return typeof path === 'string' && path.trim() !== '' &&
+      !/^[a-z][a-z0-9+.-]*:/i.test(path) &&
+      !/^[/\\]/.test(path) && path.indexOf('\\') === -1;
+  }
+
+  function indexTooltipImages(definitions) {
+    var indexed = Object.create(null);
+    if (!Array.isArray(definitions)) {
+      return indexed;
+    }
+    definitions.forEach(function (definition) {
+      if (!definition || typeof definition.id !== 'string' ||
+          definition.id.trim() === '' || !definition.image ||
+          !isManagedImagePath(definition.image.path) ||
+          typeof definition.alt !== 'string' || definition.alt.trim() === '') {
+        return;
+      }
+      indexed[definition.id] = {
+        alt: definition.alt.trim(),
+        path: definition.image.path
+      };
+    });
+    return indexed;
+  }
+
   function restoreAttribute(element, name, value) {
     if (value === null) {
       element.removeAttribute(name);
@@ -24,9 +50,13 @@
    * Enhances tooltip spans within one AdvancedText instance.
    *
    * @param {HTMLElement} root AdvancedText instance root.
+   * @param {number} contentId H5P content id used to resolve managed files.
+   * @param {Object[]} tooltipImages Managed tooltip image definitions.
    */
-  function AdvancedTextPapiJoTooltipRuntime(root) {
+  function AdvancedTextPapiJoTooltipRuntime(root, contentId, tooltipImages) {
     this.root = root;
+    this.contentId = contentId;
+    this.tooltipImages = indexTooltipImages(tooltipImages);
     this.states = [];
     this.controlRecords = [];
     this.controlRecordMap = new WeakMap();
@@ -174,15 +204,16 @@
       }
 
       var tooltipText = trigger.getAttribute('data-papijo-tooltip');
-      if (typeof tooltipText !== 'string' || tooltipText.trim() === '') {
-        return;
-      }
+      tooltipText = typeof tooltipText === 'string' ? tooltipText : '';
       var sanitizer = H5P.AdvancedTextPapiJoTooltipSanitizer;
       if (!sanitizer) {
         return;
       }
       tooltipText = sanitizer.sanitize(tooltipText);
-      if (sanitizer.textContent(tooltipText).trim() === '') {
+      var tooltipId = trigger.getAttribute('data-papijo-tooltip-id');
+      var image = typeof tooltipId === 'string' ?
+        self.tooltipImages[tooltipId] : null;
+      if (sanitizer.textContent(tooltipText).trim() === '' && !image) {
         return;
       }
 
@@ -197,6 +228,7 @@
         control: control,
         controlRecord: controlRecord,
         original: controlRecord.original,
+        image: image,
         text: tooltipText,
         trigger: trigger
       };
@@ -227,11 +259,19 @@
       this.close(this.activeState);
     }
 
+    var image = null;
+    if (state.image && typeof H5P.getPath === 'function') {
+      image = {
+        alt: state.image.alt,
+        src: H5P.getPath(state.image.path, this.contentId)
+      };
+    }
     state.bubble = new H5P.AdvancedTextPapiJoSpeechBubble(
       this.root,
       state.trigger,
       state.text,
-      state.bubbleId
+      state.bubbleId,
+      image
     );
     state.control.setAttribute('aria-expanded', 'true');
     state.control.setAttribute('aria-controls', state.bubbleId);

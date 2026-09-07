@@ -7,17 +7,43 @@
   var REMOVE_COMMAND = 'removePapijoTooltip';
   var TOOLTIP_CLASS = 'papijo-tooltip';
   var TOOLTIP_ATTRIBUTE = 'data-papijo-tooltip';
+  var TOOLTIP_ID_ATTRIBUTE = 'data-papijo-tooltip-id';
   var AUTHORING_EVENT_NAMESPACE = '.advancedTextPapiJoTooltip';
   var authoringUiId = 0;
+  var IMAGE_FIELD = {
+    name: 'image', type: 'image', label: 'Tooltip image', optional: true
+  };
 
   function translate(key) {
     return H5PEditor.t(LIBRARY_NAME, key);
   }
 
-  function createTooltipValue(text) {
+  function createTooltipValue(text, id) {
     var value = { attributes: {}, classes: [TOOLTIP_CLASS] };
     value.attributes[TOOLTIP_ATTRIBUTE] = text;
+    if (id) {
+      value.attributes[TOOLTIP_ID_ATTRIBUTE] = id;
+    }
     return value;
+  }
+
+  function clone(value) {
+    return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+  }
+
+  function createTooltipId() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return 'papijo-' + Date.now().toString(36) + '-' +
+      Math.random().toString(36).slice(2, 12);
+  }
+
+  function getImageStore(widget) {
+    return widget.parent && Array.isArray(widget.parent.children) ?
+      widget.parent.children.find(function (child) {
+        return child instanceof TooltipImagesStore;
+      }) : null;
   }
 
   function validateTooltipText(value) {
@@ -34,6 +60,19 @@
       return { valid: false, message: translate('enterTooltipText') };
     }
     return { valid: true, text: text };
+  }
+
+  function sanitizeTooltipText(value) {
+    var sanitizer = H5PEditor.AdvancedTextPapiJoTooltipSanitizer;
+    if (!sanitizer) {
+      return { valid: false, message: translate('unableToCreateTooltip') };
+    }
+    var text = sanitizer.sanitize(typeof value === 'string' ? value.trim() : '');
+    return {
+      meaningful: sanitizer.textContent(text).trim() !== '',
+      text: text,
+      valid: true
+    };
   }
 
   function localizeSelectionResult(result) {
@@ -84,10 +123,18 @@
     }
 
     var textValidation;
+    var tooltipId = options.tooltipId;
     if (this.action !== 'remove') {
-      textValidation = validateTooltipText(options.tooltipText);
+      if (this.action === 'edit' &&
+          !Object.prototype.hasOwnProperty.call(options, 'tooltipId')) {
+        tooltipId = target.id;
+      }
+      textValidation = sanitizeTooltipText(options.tooltipText);
       if (!textValidation.valid) {
         return textValidation;
+      }
+      if (!textValidation.meaningful && !tooltipId) {
+        return { valid: false, message: translate('enterTooltipTextOrImage') };
       }
     }
 
@@ -97,12 +144,12 @@
       }
       else if (this.action === 'edit') {
         writer.setAttribute(target.attributeName,
-          createTooltipValue(textValidation.text), target.range);
+          createTooltipValue(textValidation.text, tooltipId), target.range);
       }
       else {
         target.ranges.forEach(function (range) {
           writer.setAttribute(target.attributeName,
-            createTooltipValue(textValidation.text), range);
+            createTooltipValue(textValidation.text, tooltipId), range);
         });
       }
       writer.setSelection(
@@ -112,8 +159,77 @@
 
     return {
       valid: true,
+      id: this.action === 'remove' ? (target.id || null) : (tooltipId || null),
       text: textValidation ? textValidation.text : target.text
     };
+  };
+
+  function TooltipImagesStore(parent, field, params, setValue) {
+    this.parent = parent;
+    this.field = field;
+    this.params = Array.isArray(params) ? params : [];
+    this.setValue = setValue;
+  }
+
+  TooltipImagesStore.prototype.appendTo = function ($wrapper) {
+    this.$item = H5PEditor.$('<div>', {
+      'class': 'papijo-tooltip-image-store', hidden: true
+    }).appendTo($wrapper);
+  };
+
+  TooltipImagesStore.prototype.getDefinition = function (id) {
+    return this.params.find(function (definition) {
+      return definition && definition.id === id;
+    }) || null;
+  };
+
+  TooltipImagesStore.prototype.setDefinition = function (id, image, alt) {
+    var definition = this.getDefinition(id);
+    if (!definition) {
+      definition = { id: id };
+      this.params.push(definition);
+    }
+    definition.image = clone(image);
+    definition.alt = alt;
+    this.setValue(this.field, this.params);
+  };
+
+  TooltipImagesStore.prototype.removeDefinition = function (id) {
+    this.params = this.params.filter(function (definition) {
+      return !definition || definition.id !== id;
+    });
+    this.setValue(this.field, this.params.length ? this.params : undefined);
+  };
+
+  TooltipImagesStore.prototype.validate = function () {
+    var parentParams = this.parent && this.parent.params;
+    var semanticParams = parentParams && parentParams.params &&
+      typeof parentParams.params === 'object' ? parentParams.params : parentParams;
+    var text = semanticParams && semanticParams.text;
+    var referenced = Object.create(null);
+    if (typeof text === 'string') {
+      var container = document.createElement('div');
+      container.innerHTML = text;
+      Array.from(container.querySelectorAll('span.papijo-tooltip')).forEach(
+        function (span) {
+          var id = span.getAttribute(TOOLTIP_ID_ATTRIBUTE);
+          if (id) {
+            referenced[id] = true;
+          }
+        }
+      );
+    }
+    this.params = this.params.filter(function (definition) {
+      return definition && referenced[definition.id];
+    });
+    this.setValue(this.field, this.params.length ? this.params : undefined);
+    return true;
+  };
+
+  TooltipImagesStore.prototype.remove = function () {
+    if (this.$item) {
+      this.$item.remove();
+    }
   };
 
   function PapijoTooltipEditing(editor) {
@@ -143,6 +259,8 @@
       classes: [TOOLTIP_CLASS],
       attributes: { 'data-papijo-tooltip': true }
     });
+    config.htmlSupport.allow[config.htmlSupport.allow.length - 1]
+      .attributes[TOOLTIP_ID_ATTRIBUTE] = true;
     if (tableSort) {
       tableSort.extendConfig(config);
     }
@@ -238,6 +356,8 @@
     this.$createTooltipButton.attr('aria-expanded', 'false');
     this.$editTooltipButton.attr('aria-expanded', 'false');
     this.$tooltipInput.val('');
+    this.$tooltipAltInput.val('');
+    this.destroyTooltipImageWidget();
     if (restoreSelection) {
       this.restoreEditorSelection();
     }
@@ -245,8 +365,13 @@
     this.tooltipFormMode = null;
   };
 
-  AdvancedTextPapiJoTooltip.prototype.openTooltipForm = function (mode, text) {
+  AdvancedTextPapiJoTooltip.prototype.openTooltipForm = function (mode, text, detection) {
     this.tooltipFormMode = mode;
+    this.tooltipFormTooltipId = detection && detection.id || null;
+    var store = getImageStore(this);
+    var definition = store && this.tooltipFormTooltipId ?
+      store.getDefinition(this.tooltipFormTooltipId) : null;
+    this.tooltipImageDraft = definition ? clone(definition.image) : undefined;
     var sanitizer = H5PEditor.AdvancedTextPapiJoTooltipSanitizer;
     this.$tooltipInput.val(sanitizer ?
       sanitizer.toAuthoringText(text || '') : (text || ''));
@@ -254,10 +379,58 @@
       mode === 'edit' ? 'updateTooltip' : 'applyTooltip'
     ));
     this.$tooltipStatus.text('');
+    this.$tooltipAltInput.val(definition ? definition.alt : '');
+    this.mountTooltipImageWidget();
     this.$tooltipForm.prop('hidden', false);
     this.$createTooltipButton.attr('aria-expanded', mode === 'create' ? 'true' : 'false');
     this.$editTooltipButton.attr('aria-expanded', mode === 'edit' ? 'true' : 'false');
     this.$tooltipInput.trigger('focus');
+  };
+
+  AdvancedTextPapiJoTooltip.prototype.destroyTooltipImageWidget = function (preserveDraft) {
+    var widget = this.tooltipImageWidget;
+    this.tooltipImageWidget = null;
+    this.tooltipImageWidgetGeneration =
+      (this.tooltipImageWidgetGeneration || 0) + 1;
+    if (widget) {
+      widget.remove();
+    }
+    if (this.$tooltipImageField) {
+      this.$tooltipImageField.empty();
+    }
+    if (!preserveDraft) {
+      this.tooltipImageDraft = undefined;
+      this.tooltipFormTooltipId = null;
+    }
+  };
+
+  AdvancedTextPapiJoTooltip.prototype.mountTooltipImageWidget = function () {
+    var self = this;
+    if (!H5PEditor.widgets.image) {
+      return;
+    }
+    self.destroyTooltipImageWidget(true);
+    var generation = self.tooltipImageWidgetGeneration;
+    var imageWidget;
+    var imageParent = {
+      library: self.parent && self.parent.library || 'H5P.AdvancedTextPapiJo',
+      ready: function (callback) { callback(); }
+    };
+    imageWidget = new H5PEditor.widgets.image(
+      imageParent,
+      IMAGE_FIELD,
+      self.tooltipImageDraft,
+      function (_field, value) {
+        if (self.tooltipImageWidget !== imageWidget ||
+            self.tooltipImageWidgetGeneration !== generation ||
+            !self.tooltipFormMode) {
+          return;
+        }
+        self.tooltipImageDraft = value;
+      }
+    );
+    self.tooltipImageWidget = imageWidget;
+    imageWidget.appendTo(self.$tooltipImageField);
   };
 
   function createTooltipAuthoringElements(self) {
@@ -271,6 +444,15 @@
     var $label = H5PEditor.$('<label>', {
       'class': 'papijo-tooltip-authoring-label', text: translate('tooltipText')
     }).append(self.$tooltipInput);
+    self.$tooltipImageField = H5PEditor.$('<div>', {
+      'class': 'papijo-tooltip-authoring-image'
+    });
+    self.$tooltipAltInput = H5PEditor.$('<input>', {
+      type: 'text', 'class': 'papijo-tooltip-authoring-alt'
+    });
+    var $altLabel = H5PEditor.$('<label>', {
+      'class': 'papijo-tooltip-authoring-label', text: translate('imageAltText')
+    }).append(self.$tooltipAltInput);
     self.$tooltipApply = H5PEditor.$('<button>', {
       type: 'submit', 'class': 'papijo-tooltip-authoring-apply',
       text: translate('applyTooltip')
@@ -281,7 +463,8 @@
     });
     self.$tooltipForm = H5PEditor.$('<form>', {
       id: formId, 'class': 'papijo-tooltip-authoring-form', hidden: true
-    }).append($label, self.$tooltipApply, $cancel);
+    }).append($label, self.$tooltipImageField, $altLabel,
+      self.$tooltipApply, $cancel);
     self.$createTooltipButton = H5PEditor.$('<button>', {
       type: 'button', 'class': 'papijo-tooltip-authoring-create',
       text: translate('createTooltip'), 'aria-controls': formId,
@@ -352,7 +535,7 @@
         self.preservedTooltipSelection = null;
         return;
       }
-      self.openTooltipForm('edit', detection.text);
+      self.openTooltipForm('edit', detection.text, detection);
     });
 
     self.$removeTooltipButton.on('click' + AUTHORING_EVENT_NAMESPACE, function () {
@@ -376,14 +559,33 @@
     self.$tooltipForm.on('submit' + AUTHORING_EVENT_NAMESPACE, function (event) {
       event.preventDefault();
       var isEdit = self.tooltipFormMode === 'edit';
+      var image = self.tooltipImageDraft;
+      var hasImage = image && typeof image.path === 'string' &&
+        image.path.trim() !== '';
+      var alt = self.$tooltipAltInput.val().trim();
+      if (hasImage && alt === '') {
+        self.$tooltipStatus.text(translate('enterImageAltText'));
+        return;
+      }
+      var store = getImageStore(self);
+      if (hasImage && !store) {
+        self.$tooltipStatus.text(translate('unableToUpdateTooltip'));
+        return;
+      }
+      var previousId = self.tooltipFormTooltipId;
+      var tooltipId = hasImage ? (previousId || createTooltipId()) : null;
       var result = self.ckeditor.execute(isEdit ? EDIT_COMMAND : CREATE_COMMAND, {
         selection: self.preservedTooltipSelection,
+        tooltipId: tooltipId,
         tooltipText: self.$tooltipInput.val()
       });
       if (!result || !result.valid) {
         self.$tooltipStatus.text(result && result.message ? result.message :
           translate(isEdit ? 'unableToUpdateTooltip' : 'unableToCreateTooltip'));
         return;
+      }
+      if (hasImage) {
+        store.setDefinition(tooltipId, image, alt);
       }
       self.$tooltipStatus.text(translate(isEdit ? 'tooltipUpdated' : 'tooltipCreated'));
       self.closeTooltipForm(true);
@@ -417,9 +619,12 @@
   AdvancedTextPapiJoTooltip.prototype.remove = function () {
     this.unbindTooltipSelectionUpdates();
     unbindTooltipAuthoringHandlers(this);
+    this.destroyTooltipImageWidget();
     H5PEditor.Html.prototype.remove.call(this);
     this.$tooltipStatus = null;
     this.$tooltipInput = null;
+    this.$tooltipAltInput = null;
+    this.$tooltipImageField = null;
     this.$tooltipApply = null;
     this.$tooltipForm = null;
     this.$createTooltipButton = null;
@@ -437,6 +642,8 @@
   AdvancedTextPapiJoTooltip.CREATE_COMMAND = CREATE_COMMAND;
   AdvancedTextPapiJoTooltip.EDIT_COMMAND = EDIT_COMMAND;
   AdvancedTextPapiJoTooltip.REMOVE_COMMAND = REMOVE_COMMAND;
+  AdvancedTextPapiJoTooltip.TooltipImagesStore = TooltipImagesStore;
   H5PEditor.AdvancedTextPapiJoTooltip = AdvancedTextPapiJoTooltip;
   H5PEditor.widgets.advancedTextPapiJoTooltip = AdvancedTextPapiJoTooltip;
+  H5PEditor.widgets.advancedTextPapiJoTooltipImagesStore = TooltipImagesStore;
 })(H5PEditor);

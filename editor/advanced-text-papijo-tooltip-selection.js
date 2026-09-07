@@ -3,6 +3,7 @@
 
   var TOOLTIP_CLASS = 'papijo-tooltip';
   var TOOLTIP_ATTRIBUTE = 'data-papijo-tooltip';
+  var TOOLTIP_ID_ATTRIBUTE = 'data-papijo-tooltip-id';
 
   function getTooltipModelAttributeName(editor) {
     return editor.plugins.get('GeneralHtmlSupport')
@@ -14,13 +15,19 @@
       value.classes.indexOf(TOOLTIP_CLASS) !== -1;
   }
 
-  function getTooltipText(value) {
+  function getTooltipData(value) {
     if (!isPapijoTooltipAttribute(value) || !value.attributes ||
-        typeof value.attributes[TOOLTIP_ATTRIBUTE] !== 'string' ||
-        value.attributes[TOOLTIP_ATTRIBUTE].trim() === '') {
+        typeof value.attributes[TOOLTIP_ATTRIBUTE] !== 'string') {
       return null;
     }
-    return value.attributes[TOOLTIP_ATTRIBUTE];
+    var text = value.attributes[TOOLTIP_ATTRIBUTE];
+    var id = typeof value.attributes[TOOLTIP_ID_ATTRIBUTE] === 'string' &&
+      value.attributes[TOOLTIP_ID_ATTRIBUTE].trim() !== '' ?
+      value.attributes[TOOLTIP_ID_ATTRIBUTE] : null;
+    if (text.trim() === '' && id === null) {
+      return null;
+    }
+    return { id: id, key: text + '\u0000' + (id || ''), text: text };
   }
 
   function findAncestor(node, name) {
@@ -91,11 +98,13 @@
   function getTooltipSegments(parent, attributeName) {
     return Array.from(parent.getChildren()).map(function (child) {
       var value = child.hasAttribute ? child.getAttribute(attributeName) : null;
+      var data = getTooltipData(value);
       return {
+        data: data,
         end: child.startOffset + child.offsetSize,
         isTooltip: isPapijoTooltipAttribute(value),
         start: child.startOffset,
-        text: getTooltipText(value)
+        key: data && data.key
       };
     });
   }
@@ -144,7 +153,7 @@
       return { valid: false, kind: 'ordinary', reason: 'ordinarySelection' };
     }
     if (tooltipSegments.some(function (segment) {
-      return segment.text === null;
+      return segment.data === null;
     })) {
       return {
         valid: false,
@@ -154,14 +163,14 @@
       };
     }
 
-    var tooltipTexts = tooltipSegments.reduce(function (texts, segment) {
-      if (texts.indexOf(segment.text) === -1) {
-        texts.push(segment.text);
+    var tooltipKeys = tooltipSegments.reduce(function (keys, segment) {
+      if (keys.indexOf(segment.key) === -1) {
+        keys.push(segment.key);
       }
-      return texts;
+      return keys;
     }, []);
 
-    if (tooltipTexts.length !== 1) {
+    if (tooltipKeys.length !== 1) {
       return {
         valid: false,
         kind: 'invalid',
@@ -170,17 +179,17 @@
       };
     }
 
-    var tooltipText = tooltipTexts[0];
+    var tooltipData = tooltipSegments[0].data;
     var matchingIndexes = tooltipSegments.map(function (segment) {
       return segments.indexOf(segment);
     });
     var firstIndex = Math.min.apply(null, matchingIndexes);
     var lastIndex = Math.max.apply(null, matchingIndexes);
-    while (firstIndex > 0 && segments[firstIndex - 1].text === tooltipText) {
+    while (firstIndex > 0 && segments[firstIndex - 1].key === tooltipData.key) {
       firstIndex--;
     }
     while (lastIndex < segments.length - 1 &&
-        segments[lastIndex + 1].text === tooltipText) {
+        segments[lastIndex + 1].key === tooltipData.key) {
       lastIndex++;
     }
 
@@ -208,7 +217,8 @@
         editor.model.createPositionAt(structure.block, tooltipEnd)
       ),
       selectionRanges: Array.from(selection.getRanges()),
-      text: tooltipText
+      id: tooltipData.id,
+      text: tooltipData.text
     };
   }
 

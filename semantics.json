@@ -35,5 +35,34 @@
       "background": true,
       "family": true
     }
+  },
+  {
+    "name": "tooltipImages",
+    "type": "list",
+    "widget": "advancedTextPapiJoTooltipImagesStore",
+    "label": "Tooltip images",
+    "optional": true,
+    "field": {
+      "name": "tooltipImage",
+      "type": "group",
+      "label": "Tooltip image",
+      "fields": [
+        {
+          "name": "id",
+          "type": "text",
+          "label": "Identifier"
+        },
+        {
+          "name": "image",
+          "type": "image",
+          "label": "Image"
+        },
+        {
+          "name": "alt",
+          "type": "text",
+          "label": "Alternative text"
+        }
+      ]
+    }
   }
 ]

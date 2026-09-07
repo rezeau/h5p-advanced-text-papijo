@@ -29,7 +29,7 @@ const editorSanitizerSource = fs.readFileSync(
   'utf8'
 );
 
-function createWidget() {
+function createWidget(contextExtras = {}) {
   function Html(parent, field, params, setValue) {
     this.parent = parent;
     this.field = field;
@@ -49,8 +49,9 @@ function createWidget() {
     widgets: {},
     t: (_library, key) => english.libraryStrings[key]
   };
-  vm.runInNewContext(selectionSource, { H5PEditor });
-  vm.runInNewContext(widgetSource, { H5PEditor });
+  const context = { H5PEditor, ...contextExtras };
+  vm.runInNewContext(selectionSource, context);
+  vm.runInNewContext(widgetSource, context);
 
   return new H5PEditor.widgets.advancedTextPapiJoTooltip(
     {},
@@ -70,14 +71,15 @@ test('registers a custom widget while retaining the standard HTML configuration'
   assert.ok(config.plugins.includes('GeneralHtmlSupport'));
 });
 
-test('allows only the Phase 1A tooltip span metadata', () => {
+test('allows only tooltip text and stable image-id span metadata', () => {
   const config = createWidget().getCKEditorConfig();
 
   assert.deepEqual(JSON.parse(JSON.stringify(config.htmlSupport.allow)), [{
     name: 'span',
     classes: ['papijo-tooltip'],
     attributes: {
-      'data-papijo-tooltip': true
+      'data-papijo-tooltip': true,
+      'data-papijo-tooltip-id': true
     }
   }]);
 });
@@ -114,12 +116,70 @@ test('declares model commands for create, edit, and remove', () => {
   assert.equal(typeof Widget.detectExistingTooltip, 'function');
 });
 
+test('managed image store replaces and removes definitions', () => {
+  const Store = createWidget().constructor.TooltipImagesStore;
+  let stored;
+  const store = new Store({}, semantics[1], [{
+    id: 'tip-1', image: { path: 'images/old.png' }, alt: 'Old'
+  }], (_field, value) => { stored = value; });
+
+  store.setDefinition('tip-1', { path: 'images/new.png' }, 'New');
+  assert.deepEqual(JSON.parse(JSON.stringify(stored)), [{
+    id: 'tip-1', image: { path: 'images/new.png' }, alt: 'New'
+  }]);
+  store.removeDefinition('tip-1');
+  assert.equal(stored, undefined);
+});
+
+test('managed image store retains referenced definitions in nested library params', () => {
+  const tooltipId = 'nested-tip';
+  const definitions = [{
+    id: tooltipId, image: { path: 'images/nested.png' }, alt: 'Nested'
+  }];
+  let stored;
+  const parent = {
+    params: {
+      library: 'H5P.AdvancedTextPapiJo 1.1',
+      params: {
+        text: '<p><span class="papijo-tooltip" data-papijo-tooltip="Text" ' +
+          'data-papijo-tooltip-id="' + tooltipId + '">term</span></p>',
+        tooltipImages: definitions
+      }
+    }
+  };
+  const document = {
+    createElement() {
+      return {
+        set innerHTML(value) {
+          this.value = value;
+        },
+        querySelectorAll() {
+          return [{
+            getAttribute(name) {
+              return name === 'data-papijo-tooltip-id' ? tooltipId : null;
+            }
+          }];
+        }
+      };
+    }
+  };
+
+  const Store = createWidget({ document }).constructor.TooltipImagesStore;
+  const store = new Store(parent, semantics[1], definitions,
+    (_field, value) => { stored = value; });
+  store.validate();
+  assert.deepEqual(JSON.parse(JSON.stringify(stored)), definitions);
+});
+
 test('loads complete English and French editor translations', () => {
   const required = [
     'createTooltip',
     'editTooltip',
     'removeTooltip',
     'tooltipText',
+    'imageAltText',
+    'enterTooltipTextOrImage',
+    'enterImageAltText',
     'applyTooltip',
     'updateTooltip',
     'cancel',
@@ -143,6 +203,14 @@ test('loads complete English and French editor translations', () => {
 test('declares the widget, span tag, dependency, and release versions', () => {
   assert.equal(semantics[0].widget, 'advancedTextPapiJoTooltip');
   assert.ok(semantics[0].tags.includes('span'));
+  assert.equal(semantics[1].name, 'tooltipImages');
+  assert.equal(semantics[1].type, 'list');
+  assert.equal(semantics[1].optional, true);
+  assert.equal(semantics[1].widget, 'advancedTextPapiJoTooltipImagesStore');
+  assert.deepEqual(
+    semantics[1].field.fields.map((field) => field.name),
+    ['id', 'image', 'alt']
+  );
   assert.equal(library.patchVersion, 16);
   assert.deepEqual(library.editorDependencies, [{
     machineName: 'H5PEditor.AdvancedTextPapiJoTooltip',

@@ -7,6 +7,23 @@ Tooltips can be created, edited, and removed directly in the H5P editor.
 Tooltip text supports a restricted set of inline formatting elements: `<em>`,
 `<strong>`, `<sup>`, `<sub>`, `<s>`, and `<br>`.
 
+## Managed tooltip image development notes
+
+Tooltip images are stored in the optional root `tooltipImages` semantic list.
+The annotated span contains only the sanitized tooltip text and, when needed,
+`data-papijo-tooltip-id`; image URLs and markup are never stored in the text
+attribute. Orphaned image definitions are removed when the editor validates the
+content for serialization.
+
+CKEditor undo and redo cover the span annotation, including its tooltip image
+ID. Changes made inside H5P's separate image picker (upload, replacement, and
+alternative text) are not part of CKEditor's history. Definition deletion is
+deliberately deferred until serialization so undoing removal of an annotation
+does not immediately lose its image. Copying an annotated span within the same
+content shares the referenced definition; copying it to another content does
+not copy the root definition, so the destination safely behaves as a
+missing-image tooltip until an image is selected there.
+
 ## H5P CLI development junctions
 
 This Git repository contains the source for two separately installed H5P

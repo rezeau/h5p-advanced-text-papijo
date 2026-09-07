@@ -13,7 +13,7 @@
   font-family: sans-serif;
   font-size: 1rem;
   line-height: 1.4;
-  max-width: min(24rem, calc(100% - 0.5rem));
+  max-width: min(24rem, calc(100% - 0.5rem), calc(100vw - 1rem));
   min-width: min(8rem, calc(100% - 0.5rem));
   opacity: 0;
   padding: 0.65em 0.8em;
@@ -63,4 +63,17 @@
 .papijo-runtime-speech-bubble-text {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.papijo-runtime-speech-bubble-image {
+  display: block;
+  height: auto;
+  margin-top: 0.6em;
+  max-height: calc(100vh - 2rem);
+  max-width: min(100%, calc(100vw - 2.6rem));
+  object-fit: contain;
+}
+
+.papijo-runtime-speech-bubble-image:first-child {
+  margin-top: 0;
 }

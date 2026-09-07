@@ -9,6 +9,11 @@
   <script>
     window.H5P.EventDispatcher = function () {};
     window.H5P.EventDispatcher.prototype = {};
+    window.phase1fGetPathCalls = [];
+    window.H5P.getPath = function (path, contentId) {
+      window.phase1fGetPathCalls.push([path, contentId]);
+      return '/content/' + contentId + '/' + path;
+    };
     window.phase1fAlertCount = 0;
     window.alert = function () { window.phase1fAlertCount++; };
   </script>
@@ -41,12 +46,18 @@
           .replace(/</g, '&lt;').replace(/>/g, '&gt;');
       }
 
-      function createTooltip(value) {
+      function createTooltip(value, tooltipId, tooltipImages, contentId) {
         const root = document.createElement('div');
         fixture.appendChild(root);
         const html = '<p><span class="papijo-tooltip" data-papijo-tooltip="' +
-          escapeAttribute(value) + '">trigger</span></p>';
-        const instance = new H5P.AdvancedTextPapiJo({ text: html }, ++nextId);
+          escapeAttribute(value) + '"' + (tooltipId ?
+            ' data-papijo-tooltip-id="' + escapeAttribute(tooltipId) + '"' : '') +
+          '>trigger</span></p>';
+        const id = contentId === undefined ? ++nextId : contentId;
+        const instance = new H5P.AdvancedTextPapiJo({
+          text: html,
+          tooltipImages: tooltipImages
+        }, id);
         instance.attach(H5P.jQuery(root));
         return { root: root, trigger: root.querySelector('.papijo-tooltip') };
       }
@@ -56,6 +67,11 @@
           bubbles: true, cancelable: true
         }));
         return context.root.querySelector('.papijo-runtime-speech-bubble-text');
+      }
+
+      function openBubble(context) {
+        open(context);
+        return context.root.querySelector('.papijo-runtime-speech-bubble');
       }
 
       function expectMarkup(name, input, expected) {
@@ -68,6 +84,63 @@
 
       try {
         expectMarkup('plain runtime tooltip', 'Explanation', 'Explanation');
+        assert(window.phase1fGetPathCalls.length === 0,
+          'Text-only tooltip unexpectedly resolved an image');
+        record('legacy text-only tooltip does not require an image id');
+
+        let imageContext = createTooltip('Caption', 'image-1', [{
+          id: 'image-1', image: { path: 'images/photo.jpg' }, alt: 'A photo'
+        }], 42);
+        let imageBubble = openBubble(imageContext);
+        let image = imageBubble.querySelector('img');
+        assert(imageBubble.querySelector('.papijo-runtime-speech-bubble-text').textContent ===
+          'Caption' && image && image.alt === 'A photo', 'Text + image did not render');
+        assert(image.getAttribute('src') === '/content/42/images/photo.jpg',
+          'Managed image path was not resolved through H5P.getPath');
+        assert(JSON.stringify(window.phase1fGetPathCalls.at(-1)) ===
+          JSON.stringify(['images/photo.jpg', 42]), 'Incorrect H5P.getPath arguments');
+        record('text and managed image with content id');
+
+        imageContext = createTooltip('', 'image-only', [{
+          id: 'image-only', image: { path: 'images/only.png' }, alt: 'Diagram'
+        }]);
+        imageBubble = openBubble(imageContext);
+        assert(imageBubble && !imageBubble.querySelector(
+          '.papijo-runtime-speech-bubble-text') && imageBubble.querySelector('img'),
+          'Image-only tooltip did not render');
+        record('image-only tooltip');
+
+        const missing = createTooltip('', 'missing', []);
+        assert(!openBubble(missing) && !missing.trigger.hasAttribute('role'),
+          'Missing definition made an empty tooltip interactive');
+        record('missing image definition ignored');
+
+        const malformedDefinitions = [
+          { id: 'bad-url', image: { path: 'https://example.com/a.png' }, alt: 'Bad' },
+          { id: 'bad-alt', image: { path: 'images/a.png' }, alt: '' },
+          { id: 'bad-image', image: null, alt: 'Bad' }
+        ];
+        malformedDefinitions.forEach(function (definition) {
+          const malformed = createTooltip('', definition.id, malformedDefinitions);
+          assert(!openBubble(malformed), 'Malformed image definition rendered: ' + definition.id);
+        });
+        record('malformed and external image definitions ignored');
+
+        let positionCalls = 0;
+        const originalPosition = H5P.AdvancedTextPapiJoSpeechBubble.prototype.position;
+        H5P.AdvancedTextPapiJoSpeechBubble.prototype.position = function () {
+          positionCalls++;
+          return originalPosition.call(this);
+        };
+        imageContext = createTooltip('Load', 'load-image', [{
+          id: 'load-image', image: { path: 'images/load.png' }, alt: 'Load test'
+        }]);
+        image = openBubble(imageContext).querySelector('img');
+        const callsBeforeLoad = positionCalls;
+        image.dispatchEvent(new Event('load'));
+        H5P.AdvancedTextPapiJoSpeechBubble.prototype.position = originalPosition;
+        assert(positionCalls > callsBeforeLoad, 'Image load did not reposition bubble');
+        record('image load repositions bubble');
         expectMarkup('em runtime rendering', '<em>important</em>', '<em>important</em>');
         expectMarkup('strong runtime rendering', '<strong>important</strong>', '<strong>important</strong>');
         expectMarkup('sup and sub runtime rendering', 'H<sub>2</sub>O x<sup>2</sup>', 'H<sub>2</sub>O x<sup>2</sup>');
@@ -107,7 +180,7 @@
         );
         assert(window.phase1fAlertCount === 0, 'An event handler executed');
 
-        assert(results.length === 12, 'Expected 12 results, got ' + results.length);
+        assert(results.length === 18, 'Expected 18 results, got ' + results.length);
         document.getElementById('result').textContent = JSON.stringify({
           status: 'PASS', count: results.length, results: results
         }, null, 2);

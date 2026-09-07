@@ -178,7 +178,162 @@
         record('formatted save and reopen');
         await closeEditor(context);
 
-        assert(results.length === 17, 'Expected 17 results, got ' + results.length);
+        context = await openEditor(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Old" ' +
+          'data-papijo-tooltip-id="stable-image">term</span></p>'
+        );
+        setSelection(context.editor, 1, 3);
+        operation = context.editor.execute('editPapijoTooltip', {
+          tooltipText: 'New text'
+        });
+        output = context.editor.getData();
+        assert(operation.valid && output.includes('data-papijo-tooltip-id="stable-image"') &&
+          output.includes('data-papijo-tooltip="New text"'),
+          'Text edit did not preserve image association: ' + output);
+        record('text edit preserves image association');
+
+        operation = context.editor.execute('editPapijoTooltip', {
+          tooltipId: null,
+          tooltipText: 'Text remains'
+        });
+        output = context.editor.getData();
+        assert(operation.valid && operation.id === null &&
+          output.includes('data-papijo-tooltip="Text remains"') &&
+          !output.includes('data-papijo-tooltip-id'),
+          'Image removal did not return the resulting association: ' + output);
+        context.editor.execute('undo');
+        assert(context.editor.getData().includes('data-papijo-tooltip-id="stable-image"'),
+          'Undo did not restore image annotation id');
+        context.editor.execute('redo');
+        let storedDefinitions = [{
+          id: 'stable-image', image: { path: 'images/stable.png' }, alt: 'Stable'
+        }];
+        let store = new Widget.TooltipImagesStore(
+          { params: { text: context.editor.getData() } }, semantics[1],
+          storedDefinitions, function (_field, value) { storedDefinitions = value; }
+        );
+        store.validate();
+        assert(storedDefinitions === undefined,
+          'Image removal did not clean its orphaned definition on validation');
+        record('image removal retains text and participates in undo redo');
+        await closeEditor(context);
+
+        context = await openEditor(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Remove" ' +
+          'data-papijo-tooltip-id="remove-image">term</span></p>'
+        );
+        setSelection(context.editor, 1, 3);
+        operation = context.editor.execute('removePapijoTooltip');
+        output = context.editor.getData();
+        assert(operation.valid && operation.id === 'remove-image' &&
+          !output.includes('papijo-tooltip'),
+          'Complete removal did not expose and remove the image association');
+        storedDefinitions = [{
+          id: 'remove-image', image: { path: 'images/remove.png' }, alt: 'Remove'
+        }];
+        store = new Widget.TooltipImagesStore(
+          { params: { text: output } }, semantics[1], storedDefinitions,
+          function (_field, value) { storedDefinitions = value; }
+        );
+        store.validate();
+        assert(storedDefinitions === undefined,
+          'Complete removal did not clean its associated image definition');
+        record('complete tooltip removal returns associated image id');
+        await closeEditor(context);
+
+        const delayedImageWidgets = [];
+        H5PEditor.widgets.image = function (_parent, _field, value, setValue) {
+          this.value = value;
+          this.setValue = setValue;
+          this.removed = false;
+          delayedImageWidgets.push(this);
+        };
+        H5PEditor.widgets.image.prototype.appendTo = function () {};
+        H5PEditor.widgets.image.prototype.remove = function () {
+          this.removed = true;
+        };
+        H5PEditor.widgets.image.prototype.complete = function (value) {
+          this.setValue(semantics[1].field.fields[1], value);
+        };
+
+        context = await openEditor('<p>First tooltip and second tooltip</p>');
+        setSelection(context.editor, 0, 5);
+        context.widget.addTooltipAuthoringControls();
+        context.widget.captureModelSelection();
+        context.widget.openTooltipForm('create');
+        const firstImageWidget = delayedImageWidgets.at(-1);
+        firstImageWidget.complete({ path: 'images/current.png' });
+        assert(context.widget.tooltipImageDraft.path === 'images/current.png',
+          'Current image widget callback did not update its own draft');
+        record('current image widget callback updates draft');
+
+        context.widget.$tooltipForm.find('.papijo-tooltip-authoring-cancel').trigger('click');
+        setSelection(context.editor, 18, 24);
+        context.widget.captureModelSelection();
+        context.widget.openTooltipForm('create');
+        const secondImageWidget = delayedImageWidgets.at(-1);
+        firstImageWidget.complete({ path: 'images/stale-after-cancel.png' });
+        assert(context.widget.tooltipImageDraft === undefined,
+          'Cancelled image widget callback changed the next tooltip draft');
+        record('cancelled image widget callback is ignored by next form');
+
+        secondImageWidget.complete({ path: 'images/second.png' });
+        assert(context.widget.tooltipImageDraft.path === 'images/second.png',
+          'Second image widget callback did not update its own draft');
+        secondImageWidget.complete(undefined);
+        assert(context.widget.tooltipImageDraft === undefined,
+          'Current image removal did not clear its own draft');
+        secondImageWidget.complete({ path: 'images/second.png' });
+        context.widget.mountTooltipImageWidget();
+        const replacementImageWidget = delayedImageWidgets.at(-1);
+        secondImageWidget.complete({ path: 'images/stale-after-remount.png' });
+        assert(context.widget.tooltipImageDraft.path === 'images/second.png',
+          'Replaced image widget callback changed the remounted draft');
+        replacementImageWidget.complete({ path: 'images/replacement.png' });
+        assert(context.widget.tooltipImageDraft.path === 'images/replacement.png',
+          'Remounted image widget callback did not update its own draft');
+        record('remount invalidates old callback and keeps current callback working');
+
+        context.widget.destroyTooltipImageWidget();
+        replacementImageWidget.complete({ path: 'images/stale-after-destroy.png' });
+        assert(context.widget.tooltipImageDraft === undefined,
+          'Destroyed image widget callback restored a cleared draft');
+        record('widget destruction invalidates delayed callback');
+
+        context.widget.captureModelSelection();
+        context.widget.openTooltipForm('create');
+        const removedEditorImageWidget = delayedImageWidgets.at(-1);
+        context.widget.remove();
+        removedEditorImageWidget.complete({ path: 'images/stale-after-editor-remove.png' });
+        assert(context.widget.tooltipImageDraft === undefined,
+          'Removed editor widget accepted a delayed image callback');
+        record('full editor widget removal invalidates delayed callback');
+        await context.editor.destroy();
+        fixture.innerHTML = '';
+
+        storedDefinitions = [{
+          id: 'nested-retained',
+          image: { path: 'images/nested-retained.png', mime: 'image/png' },
+          alt: 'Nested retained'
+        }];
+        store = new Widget.TooltipImagesStore({
+          params: {
+            library: 'H5P.AdvancedTextPapiJo 1.1',
+            params: {
+              text: '<p><span class="papijo-tooltip" data-papijo-tooltip="Nested" ' +
+                'data-papijo-tooltip-id="nested-retained">term</span></p>',
+              tooltipImages: storedDefinitions
+            }
+          }
+        }, semantics[1], storedDefinitions,
+        function (_field, value) { storedDefinitions = value; });
+        store.validate();
+        assert(storedDefinitions && storedDefinitions.length === 1 &&
+          storedDefinitions[0].id === 'nested-retained',
+          'Nested library validation incorrectly removed a referenced definition');
+        record('nested library validation retains referenced image definition');
+
+        assert(results.length === 26, 'Expected 26 results, got ' + results.length);
         document.getElementById('result').textContent = JSON.stringify({
           status: 'PASS', count: results.length, results: results
         }, null, 2);

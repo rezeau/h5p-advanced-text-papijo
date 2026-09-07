@@ -15,6 +15,8 @@ H5P.AdvancedTextPapiJo = (function ($, EventDispatcher) {
 
     var text = parameters && typeof parameters.text === 'string' ?
       parameters.text : '<em>New text</em>';
+    var tooltipImages = parameters && Array.isArray(parameters.tooltipImages) ?
+      parameters.tooltipImages : [];
 
     // Add a responsive wrapper around tables, if any.
     if (text.search('<table') !== -1) {
@@ -34,7 +36,11 @@ H5P.AdvancedTextPapiJo = (function ($, EventDispatcher) {
         if (tooltipRuntime) {
           tooltipRuntime.destroy();
         }
-        tooltipRuntime = new H5P.AdvancedTextPapiJoTooltipRuntime($container[0]);
+        tooltipRuntime = new H5P.AdvancedTextPapiJoTooltipRuntime(
+          $container[0],
+          id,
+          tooltipImages
+        );
       }
       return tooltipRuntime.initialize();
     };

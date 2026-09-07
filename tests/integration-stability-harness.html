@@ -10,6 +10,11 @@
     window.H5P.EventDispatcher.prototype.createXAPIEventTemplate = function () {
       return {};
     };
+    window.integrationGetPathCalls = [];
+    window.H5P.getPath = function (path, contentId) {
+      window.integrationGetPathCalls.push([path, contentId]);
+      return '/content/' + contentId + '/' + path;
+    };
     window.H5PIntegration = { editor: { wysiwygButtons: [] } };
     window.H5PEditor = {
       $: window.H5P.jQuery,
@@ -30,6 +35,12 @@
   <script>
     window.H5P.newRunnable = function (descriptor, contentId) {
       if (descriptor.library === 'H5P.AdvancedTextPapiJo 1.1') {
+        window.integrationNewRunnableCalls =
+          window.integrationNewRunnableCalls || [];
+        window.integrationNewRunnableCalls.push({
+          contentId: contentId,
+          params: descriptor.params
+        });
         return new window.H5P.AdvancedTextPapiJo(descriptor.params, contentId);
       }
       throw new Error('Unexpected child library: ' + descriptor.library);
@@ -101,6 +112,48 @@
         accordion.instances[0].attach($runtime);
         assert($runtime.html() === '<em>New text</em>', 'Empty Accordion child did not use fallback text');
         record('Accordion runtime child with empty params');
+
+        const nestedTooltipId = 'accordion-image-tooltip';
+        const nestedDescriptor = {
+          params: {
+            text: '<p><span class="papijo-tooltip" data-papijo-tooltip="Nested" ' +
+              'data-papijo-tooltip-id="' + nestedTooltipId + '">term</span></p>',
+            tooltipImages: [{
+              id: nestedTooltipId,
+              image: {
+                path: 'images/nested-tooltip.png',
+                mime: 'image/png'
+              },
+              alt: 'Nested tooltip image'
+            }]
+          },
+          library: 'H5P.AdvancedTextPapiJo 1.1',
+          subContentId: 'nested-tooltip-subcontent'
+        };
+        const imageAccordion = new H5P.AccordionPapiJo({
+          hTag: 'h2',
+          panels: [{ title: 'Image tooltip', content: nestedDescriptor }]
+        }, 73, {});
+        const nestedCall = window.integrationNewRunnableCalls.at(-1);
+        assert(nestedCall.contentId === 73,
+          'Accordion did not pass its parent content id to AdvancedTextPapiJo');
+        assert(nestedCall.params.tooltipImages === nestedDescriptor.params.tooltipImages,
+          'Accordion did not pass the nested tooltip image definitions intact');
+        const $nestedRuntime = $('<div>').appendTo('#runtime-fixture');
+        imageAccordion.instances[0].attach($nestedRuntime);
+        $nestedRuntime.find('.papijo-tooltip').trigger('click');
+        const nestedImage = $nestedRuntime.find(
+          '.papijo-runtime-speech-bubble img'
+        )[0];
+        assert(nestedImage && nestedImage.alt === 'Nested tooltip image',
+          'Nested AdvancedTextPapiJo did not render its managed image');
+        assert(nestedImage.getAttribute('src').endsWith(
+          '/content/73/images/nested-tooltip.png'
+        ), 'Nested image was not resolved against the parent content id');
+        assert(JSON.stringify(window.integrationGetPathCalls.at(-1)) ===
+          JSON.stringify(['images/nested-tooltip.png', 73]),
+          'Nested runtime used incorrect H5P.getPath arguments');
+        record('Accordion nested managed tooltip image runtime');
 
         let autocompleteMethodCalls = 0;
         $.fn.autocomplete = function (method) {

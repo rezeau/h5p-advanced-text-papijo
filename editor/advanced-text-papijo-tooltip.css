@@ -31,6 +31,23 @@
   width: 100%;
 }
 
+.papijo-tooltip-authoring-alt {
+  box-sizing: border-box;
+  display: block;
+  margin-top: 0.25em;
+  max-width: 32em;
+  width: 100%;
+}
+
+.papijo-tooltip-authoring-image {
+  margin: 0.75em 0;
+  max-width: 32em;
+}
+
+.papijo-tooltip-image-store {
+  display: none;
+}
+
 .papijo-tooltip-authoring-status {
   margin: 0.5em 0 0;
 }

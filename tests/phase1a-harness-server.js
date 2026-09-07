@@ -46,7 +46,7 @@ const routes = {
   '/advanced-text-papijo-tooltip-runtime.js': path.join(root, 'advanced-text-papijo-tooltip-runtime.js'),
   '/advanced-text-papijo-speech-bubble.css': path.join(root, 'advanced-text-papijo-speech-bubble.css'),
   '/advanced-text-papijo-tooltip-runtime.css': path.join(root, 'advanced-text-papijo-tooltip-runtime.css'),
-  '/accordion.js': 'C:\\my_first_h5p_environment\\libraries\\H5P.AccordionPapiJo-1.0\\h5p-accordion.js',
+  '/accordion.js': 'C:\\my_first_h5p_environment\\libraries\\H5P.AccordionPapiJo-1.1\\h5p-accordion-papijo.js',
   '/semantics.json': path.join(root, 'semantics.json'),
   '/language/en.json': path.join(root, 'editor', 'language', 'en.json'),
   '/language/fr.json': path.join(root, 'editor', 'language', 'fr.json')

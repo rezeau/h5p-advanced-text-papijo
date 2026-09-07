@@ -33,6 +33,14 @@ assertSameValue(
   'Tooltip metadata'
 );
 
+$imageTooltip = '<p><span class="papijo-tooltip" data-papijo-tooltip="Caption" data-papijo-tooltip-id="tip-image-1">selected phrase</span></p>';
+$validator->validateText($imageTooltip, $semantics);
+assertSameValue(
+  '<p><span class="papijo-tooltip" data-papijo-tooltip="Caption" data-papijo-tooltip-id="tip-image-1">selected phrase</span></p>',
+  $imageTooltip,
+  'Tooltip image identifier metadata'
+);
+
 $formatted = '<p><span class="papijo-tooltip" data-papijo-tooltip="Explanation">selected <strong>formatted</strong> phrase</span></p>';
 $validator->validateText($formatted, $semantics);
 assertSameValue(

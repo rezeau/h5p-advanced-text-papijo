@@ -11,8 +11,9 @@
    * @param {HTMLElement} trigger Existing annotated trigger.
    * @param {string} text Sanitized restricted inline tooltip markup.
    * @param {string} id Unique bubble id.
+   * @param {Object} [image] Resolved managed image data.
    */
-  function AdvancedTextPapiJoSpeechBubble(root, trigger, text, id) {
+  function AdvancedTextPapiJoSpeechBubble(root, trigger, text, id, image) {
     var self = this;
     self.root = root;
     self.trigger = trigger;
@@ -25,12 +26,25 @@
     self.element.setAttribute('role', 'tooltip');
     self.element.setAttribute('aria-live', 'polite');
 
-    var textElement = document.createElement('div');
-    textElement.className = 'papijo-runtime-speech-bubble-text';
-    textElement.appendChild(
-      H5P.AdvancedTextPapiJoTooltipSanitizer.toFragment(text, document)
-    );
-    self.element.appendChild(textElement);
+    if (H5P.AdvancedTextPapiJoTooltipSanitizer.textContent(text).trim() !== '') {
+      var textElement = document.createElement('div');
+      textElement.className = 'papijo-runtime-speech-bubble-text';
+      textElement.appendChild(
+        H5P.AdvancedTextPapiJoTooltipSanitizer.toFragment(text, document)
+      );
+      self.element.appendChild(textElement);
+    }
+    if (image && typeof image.src === 'string' &&
+        typeof image.alt === 'string') {
+      var imageElement = document.createElement('img');
+      imageElement.className = 'papijo-runtime-speech-bubble-image';
+      imageElement.alt = image.alt;
+      imageElement.addEventListener('load', function () {
+        self.position();
+      });
+      imageElement.src = image.src;
+      self.element.appendChild(imageElement);
+    }
     root.appendChild(self.element);
 
     self.boundPosition = function () {
@@ -42,6 +56,7 @@
       self.resizeObserver = new ResizeObserver(self.boundPosition);
       self.resizeObserver.observe(root);
       self.resizeObserver.observe(trigger);
+      self.resizeObserver.observe(self.element);
     }
 
     self.position();
