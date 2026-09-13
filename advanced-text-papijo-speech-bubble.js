@@ -5,6 +5,39 @@
   var TAIL_GAP = 10;
 
   /**
+   * Plan vertical placement against the AdvancedText root without counting
+   * space already reserved for the current bubble.
+   *
+   * @param {DOMRect} triggerRect Trigger bounds.
+   * @param {DOMRect} bubbleRect Rendered bubble bounds.
+   * @param {DOMRect} rootRect AdvancedText root bounds.
+   * @param {number} currentReservedSpace Current in-flow reservation.
+   * @returns {{direction: string, fits: boolean, reservedSpace: number}}
+   */
+  function getLayoutPlan(
+    triggerRect,
+    bubbleRect,
+    rootRect,
+    currentReservedSpace
+  ) {
+    var naturalBottom = rootRect.bottom - currentReservedSpace;
+    var above = Math.max(0, triggerRect.top - rootRect.top - TAIL_GAP);
+    var below = Math.max(0, naturalBottom - triggerRect.bottom - TAIL_GAP);
+
+    if (bubbleRect.height <= below) {
+      return { direction: 'below', fits: true, reservedSpace: 0 };
+    }
+    if (bubbleRect.height <= above) {
+      return { direction: 'above', fits: true, reservedSpace: 0 };
+    }
+    return {
+      direction: 'below',
+      fits: false,
+      reservedSpace: Math.ceil(bubbleRect.height - below)
+    };
+  }
+
+  /**
    * Speech bubble positioned against an existing AdvancedText tooltip span.
    *
    * @param {HTMLElement} root AdvancedText instance root.
@@ -12,12 +45,22 @@
    * @param {string} text Sanitized restricted inline tooltip markup.
    * @param {string} id Unique bubble id.
    * @param {Object} [image] Resolved managed image data.
+   * @param {Object} [layout] AdvancedText-owned layout callbacks.
    */
-  function AdvancedTextPapiJoSpeechBubble(root, trigger, text, id, image) {
+  function AdvancedTextPapiJoSpeechBubble(
+    root,
+    trigger,
+    text,
+    id,
+    image,
+    layout
+  ) {
     var self = this;
     self.root = root;
     self.trigger = trigger;
+    self.layout = layout || {};
     self.animationFrame = null;
+    self.layoutFrame = null;
     self.resizeObserver = null;
 
     self.element = document.createElement('div');
@@ -68,6 +111,17 @@
     });
   }
 
+  AdvancedTextPapiJoSpeechBubble.prototype.queuePosition = function () {
+    var self = this;
+    if (self.layoutFrame !== null) {
+      window.cancelAnimationFrame(self.layoutFrame);
+    }
+    self.layoutFrame = window.requestAnimationFrame(function () {
+      self.layoutFrame = null;
+      self.position();
+    });
+  };
+
   AdvancedTextPapiJoSpeechBubble.prototype.position = function () {
     if (!this.element || !this.element.isConnected ||
         !this.trigger || !this.trigger.isConnected) {
@@ -87,10 +141,20 @@
     var left = triggerCenter - (bubbleWidth / 2);
     left = Math.max(EDGE_GAP, Math.min(left, rootWidth - bubbleWidth - EDGE_GAP));
 
-    var spaceBelow = window.innerHeight - triggerRect.bottom;
-    var spaceAbove = triggerRect.top;
-    var placeBelow = spaceBelow >= bubbleRect.height + TAIL_GAP ||
-      spaceBelow >= spaceAbove;
+    var currentReservedSpace = typeof this.layout.getReservedSpace ===
+      'function' ? this.layout.getReservedSpace() : 0;
+    var plan = getLayoutPlan(
+      triggerRect,
+      bubbleRect,
+      rootRect,
+      currentReservedSpace
+    );
+    if (typeof this.layout.setReservedSpace === 'function' &&
+        plan.reservedSpace !== currentReservedSpace) {
+      this.layout.setReservedSpace(plan.reservedSpace);
+      this.queuePosition();
+    }
+    var placeBelow = plan.direction === 'below';
     var top = placeBelow ?
       triggerRect.bottom - rootRect.top + TAIL_GAP :
       triggerRect.top - rootRect.top - bubbleRect.height - TAIL_GAP;
@@ -116,6 +180,10 @@
       window.cancelAnimationFrame(this.animationFrame);
       this.animationFrame = null;
     }
+    if (this.layoutFrame !== null) {
+      window.cancelAnimationFrame(this.layoutFrame);
+      this.layoutFrame = null;
+    }
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
       this.resizeObserver = null;
@@ -127,4 +195,5 @@
   };
 
   H5P.AdvancedTextPapiJoSpeechBubble = AdvancedTextPapiJoSpeechBubble;
+  H5P.AdvancedTextPapiJoSpeechBubble.getLayoutPlan = getLayoutPlan;
 })(H5P);

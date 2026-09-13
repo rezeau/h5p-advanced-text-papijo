@@ -5,8 +5,29 @@
   <title>AdvancedTextPapiJo integration stability verification</title>
   <script src="/jquery.js"></script>
   <script>
-    window.H5P.EventDispatcher = function () {};
-    window.H5P.EventDispatcher.prototype.trigger = function () {};
+    window.H5P.EventDispatcher = function () {
+      this.eventListeners = Object.create(null);
+    };
+    window.H5P.EventDispatcher.prototype.on = function (type, listener) {
+      const listeners = this.eventListeners[type] ||
+        (this.eventListeners[type] = []);
+      listeners.push(listener);
+      return this;
+    };
+    window.H5P.EventDispatcher.prototype.off = function (type, listener) {
+      const listeners = this.eventListeners[type] || [];
+      this.eventListeners[type] = listener ? listeners.filter(function (item) {
+        return item !== listener;
+      }) : [];
+      return this;
+    };
+    window.H5P.EventDispatcher.prototype.trigger = function (event) {
+      const type = typeof event === 'string' ? event : event && event.type;
+      (this.eventListeners[type] || []).slice().forEach(function (listener) {
+        listener.call(this, event);
+      }, this);
+      return this;
+    };
     window.H5P.EventDispatcher.prototype.createXAPIEventTemplate = function () {
       return {};
     };

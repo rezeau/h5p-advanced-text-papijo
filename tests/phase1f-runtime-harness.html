@@ -8,7 +8,9 @@
   <script src="/jquery.js"></script>
   <script>
     window.H5P.EventDispatcher = function () {};
-    window.H5P.EventDispatcher.prototype = {};
+    window.H5P.EventDispatcher.prototype = {
+      trigger: function () {}
+    };
     window.phase1fGetPathCalls = [];
     window.H5P.getPath = function (path, contentId) {
       window.phase1fGetPathCalls.push([path, contentId]);

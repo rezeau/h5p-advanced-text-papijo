@@ -46,6 +46,33 @@
     control.setAttribute('aria-expanded', 'false');
   }
 
+  function getAccessibleAncestorDocuments(startWindow, fallbackDocument) {
+    if (!startWindow) {
+      return fallbackDocument ? [fallbackDocument] : [];
+    }
+
+    var documents = [];
+    var currentWindow = startWindow;
+    while (currentWindow) {
+      try {
+        var currentDocument = currentWindow.document;
+        if (!currentDocument || documents.indexOf(currentDocument) !== -1) {
+          break;
+        }
+        documents.push(currentDocument);
+        if (!currentWindow.parent || currentWindow.parent === currentWindow) {
+          break;
+        }
+        currentWindow = currentWindow.parent;
+      }
+      catch (error) {
+        // Keep documents reached before an inaccessible cross-origin boundary.
+        break;
+      }
+    }
+    return documents;
+  }
+
   /**
    * Enhances tooltip spans within one AdvancedText instance.
    *
@@ -53,7 +80,12 @@
    * @param {number} contentId H5P content id used to resolve managed files.
    * @param {Object[]} tooltipImages Managed tooltip image definitions.
    */
-  function AdvancedTextPapiJoTooltipRuntime(root, contentId, tooltipImages) {
+  function AdvancedTextPapiJoTooltipRuntime(
+    root,
+    contentId,
+    tooltipImages,
+    onResize
+  ) {
     this.root = root;
     this.contentId = contentId;
     this.tooltipImages = indexTooltipImages(tooltipImages);
@@ -61,23 +93,87 @@
     this.controlRecords = [];
     this.controlRecordMap = new WeakMap();
     this.activeState = null;
+    this.onResize = typeof onResize === 'function' ? onResize : function () {};
+    this.reservedSpace = 0;
+    this.reservedSpaceElement = null;
     this.boundOutsidePointer = this.handleOutsidePointer.bind(this);
     this.outsidePointerAttached = false;
+    this.outsidePointerDocuments = [];
     this.connectionObserver = null;
   }
 
   AdvancedTextPapiJoTooltipRuntime.prototype.addOutsidePointerListener = function () {
-    if (!this.outsidePointerAttached) {
-      document.addEventListener('pointerdown', this.boundOutsidePointer);
-      this.outsidePointerAttached = true;
+    if (this.outsidePointerAttached) {
+      return;
     }
+    var ownerDocument = this.root.ownerDocument || document;
+    var startWindow = ownerDocument.defaultView ||
+      (typeof window === 'undefined' ? null : window);
+    this.outsidePointerDocuments = getAccessibleAncestorDocuments(
+      startWindow,
+      ownerDocument
+    );
+    var self = this;
+    this.outsidePointerDocuments.forEach(function (pointerDocument) {
+      pointerDocument.addEventListener(
+        'pointerdown',
+        self.boundOutsidePointer,
+        true
+      );
+    });
+    this.outsidePointerAttached = this.outsidePointerDocuments.length > 0;
   };
 
   AdvancedTextPapiJoTooltipRuntime.prototype.removeOutsidePointerListener = function () {
-    if (this.outsidePointerAttached) {
-      document.removeEventListener('pointerdown', this.boundOutsidePointer);
-      this.outsidePointerAttached = false;
+    var self = this;
+    this.outsidePointerDocuments.forEach(function (pointerDocument) {
+      pointerDocument.removeEventListener(
+        'pointerdown',
+        self.boundOutsidePointer,
+        true
+      );
+    });
+    this.outsidePointerDocuments = [];
+    this.outsidePointerAttached = false;
+  };
+
+  AdvancedTextPapiJoTooltipRuntime.prototype.setReservedSpace = function (height) {
+    height = Math.max(0, Math.ceil(Number(height) || 0));
+    var changed = height !== this.reservedSpace;
+    if (!this.reservedSpaceElement) {
+      this.reservedSpaceElement = this.root.ownerDocument.createElement('div');
+      this.reservedSpaceElement.className =
+        'papijo-runtime-tooltip-reserved-space';
+      this.reservedSpaceElement.setAttribute('aria-hidden', 'true');
+      // A zero-metric text node keeps this block from collapsing through,
+      // so the final content margin has the same topology at every height.
+      this.reservedSpaceElement.textContent = '\u200b';
+      this.reservedSpaceElement.style.fontSize = '0';
+      this.reservedSpaceElement.style.lineHeight = '0';
+      this.reservedSpaceElement.style.pointerEvents = 'none';
+      this.reservedSpaceElement.style.width = '100%';
+      this.reservedSpaceElement.style.height = '0px';
+      this.root.appendChild(this.reservedSpaceElement);
+      changed = true;
     }
+    if (height !== this.reservedSpace) {
+      this.reservedSpace = height;
+      this.reservedSpaceElement.style.height = height + 'px';
+    }
+    if (changed) {
+      this.onResize();
+    }
+  };
+
+  AdvancedTextPapiJoTooltipRuntime.prototype.releaseReservedSpace = function () {
+    if (!this.reservedSpaceElement) {
+      this.reservedSpace = 0;
+      return;
+    }
+    this.reservedSpace = 0;
+    this.reservedSpaceElement.remove();
+    this.reservedSpaceElement = null;
+    this.onResize();
   };
 
   AdvancedTextPapiJoTooltipRuntime.prototype.observeRootConnection = function () {
@@ -259,6 +355,8 @@
       this.close(this.activeState);
     }
 
+    this.setReservedSpace(0);
+
     var image = null;
     if (state.image && typeof H5P.getPath === 'function') {
       image = {
@@ -266,12 +364,21 @@
         src: H5P.getPath(state.image.path, this.contentId)
       };
     }
+    var self = this;
     state.bubble = new H5P.AdvancedTextPapiJoSpeechBubble(
       this.root,
       state.trigger,
       state.text,
       state.bubbleId,
-      image
+      image,
+      {
+        getReservedSpace: function () {
+          return self.reservedSpace;
+        },
+        setReservedSpace: function (height) {
+          self.setReservedSpace(height);
+        }
+      }
     );
     state.control.setAttribute('aria-expanded', 'true');
     state.control.setAttribute('aria-controls', state.bubbleId);
@@ -287,6 +394,7 @@
     }
     state.bubble.remove();
     state.bubble = null;
+    this.releaseReservedSpace();
     setClosedControlState(state.control);
     if (this.activeState === state) {
       this.activeState = null;
@@ -326,6 +434,7 @@
       this.connectionObserver = null;
     }
     this.close();
+    this.releaseReservedSpace();
     this.states.forEach(function (state) {
       state.trigger.classList.remove('papijo-runtime-tooltip-trigger');
       initializedTriggers.delete(state.trigger);
@@ -356,4 +465,6 @@
   };
 
   H5P.AdvancedTextPapiJoTooltipRuntime = AdvancedTextPapiJoTooltipRuntime;
+  H5P.AdvancedTextPapiJoTooltipRuntime.getAccessibleAncestorDocuments =
+    getAccessibleAncestorDocuments;
 })(H5P);

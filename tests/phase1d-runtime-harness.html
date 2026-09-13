@@ -15,11 +15,16 @@
     .runtime-box-narrow {
       width: 11rem;
     }
+    #margin-collapse-runtime .papijo-runtime-speech-bubble {
+      height: 44px;
+    }
   </style>
   <script src="/jquery.js"></script>
   <script>
     window.H5P.EventDispatcher = function () {};
-    window.H5P.EventDispatcher.prototype = {};
+    window.H5P.EventDispatcher.prototype = {
+      trigger: function () {}
+    };
   </script>
   <script src="/advanced-text-papijo-tooltip-sanitizer.js"></script>
   <script src="/advanced-text-papijo-speech-bubble.js"></script>
@@ -247,7 +252,72 @@
         assert(beforeLeft !== afterLeft, 'Resize did not update bubble position');
         record('resize reposition behavior', { before: beforeLeft, after: afterLeft });
 
-        assert(results.length === 20, 'Expected 20 runtime results, got ' + results.length);
+        const marginRoot = document.createElement('div');
+        marginRoot.id = 'margin-collapse-runtime';
+        marginRoot.style.width = '20rem';
+        fixture.appendChild(marginRoot);
+        let marginResizeCount = 0;
+        const marginInstance = new H5P.AdvancedTextPapiJo({
+          text: '<p style="margin:0"><span class="papijo-tooltip" ' +
+            'data-papijo-tooltip="Margin case">margin trigger</span></p>' +
+            '<div style="height:45px"></div>' +
+            '<p style="height:1px;margin:0 0 24px"></p>'
+        }, 99);
+        marginInstance.trigger = function (event) {
+          if (event === 'resize') {
+            marginResizeCount++;
+          }
+        };
+        marginInstance.attach(H5P.jQuery(marginRoot));
+        const marginTrigger = marginRoot.querySelector('.papijo-tooltip');
+        const naturalRootRect = marginRoot.getBoundingClientRect();
+        const marginTriggerRect = marginTrigger.getBoundingClientRect();
+        const naturalBelow = Math.max(
+          0,
+          naturalRootRect.bottom - marginTriggerRect.bottom - 10
+        );
+        const naturalDeficit = 44 - naturalBelow;
+        assert(naturalDeficit > 0 && naturalDeficit < 24,
+          'Margin-collapse fixture did not create a near-threshold deficit');
+
+        click(marginTrigger);
+        for (let frame = 0; frame < 6; frame++) {
+          await wait();
+        }
+        let marginSpacers = marginRoot.querySelectorAll(
+          '.papijo-runtime-tooltip-reserved-space'
+        );
+        assert(marginSpacers.length === 1,
+          'Open margin case must retain exactly one spacer');
+        assert(marginSpacers[0].style.height === '0px',
+          'Collapsed margin should let the retained spacer stabilize at zero');
+        const stabilizedResizeCount = marginResizeCount;
+        for (let frame = 0; frame < 6; frame++) {
+          await wait();
+        }
+        assert(marginResizeCount === stabilizedResizeCount,
+          'Margin-collapse case continued emitting resize events');
+        bubble = marginRoot.querySelector('.papijo-runtime-speech-bubble');
+        assert(bubble.getBoundingClientRect().bottom <=
+          marginRoot.getBoundingClientRect().bottom + 0.5,
+        'Margin-collapse case did not contain the complete bubble');
+
+        click(marginTrigger);
+        assert(marginRoot.querySelectorAll(
+          '.papijo-runtime-tooltip-reserved-space'
+        ).length === 0, 'Close retained the margin-case spacer');
+        const closedResizeCount = marginResizeCount;
+        for (let frame = 0; frame < 3; frame++) {
+          await wait();
+        }
+        assert(marginResizeCount === closedResizeCount,
+          'Close left a resize or animation-frame storm running');
+        record('collapsing final margin reservation converges', {
+          deficit: naturalDeficit,
+          resizeCount: stabilizedResizeCount
+        });
+
+        assert(results.length === 21, 'Expected 21 runtime results, got ' + results.length);
         document.getElementById('result').textContent = JSON.stringify({
           status: 'PASS', count: results.length, results: results
         }, null, 2);

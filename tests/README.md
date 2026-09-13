@@ -10,7 +10,7 @@ machine-specific paths.
 Run the Node tests:
 
 ```powershell
-node --test tests/phase1a-editor-widget.test.js tests/integration-stability.test.js tests/sanitizer-source-management.test.js
+node --test tests/phase1a-editor-widget.test.js tests/integration-stability.test.js tests/sanitizer-source-management.test.js tests/tooltip-layout.test.js
 ```
 
 Check every tracked JavaScript file:
@@ -83,7 +83,7 @@ each path below on that same origin and wait for the result block to report
 | `/phase1c.html` | Phase 1C edit, remove, and localization |
 | `/selection-validation.html` | Existing 16-case selection acceptance baseline |
 | `/integration-stability.html` | Accordion and nested-editor integration |
-| `/phase1d-runtime.html` | Phase 1D runtime behavior |
+| `/phase1d-runtime.html` | Phase 1D runtime behavior and margin-collapse convergence |
 | `/phase1f-editor.html` | Phase 1F editor formatting and security |
 | `/phase1f-runtime.html` | Phase 1F runtime formatting and security |
 | `/r0-characterization.html` | R0 lifecycle and ownership characterization |

@@ -39,7 +39,10 @@ H5P.AdvancedTextPapiJo = (function ($, EventDispatcher) {
         tooltipRuntime = new H5P.AdvancedTextPapiJoTooltipRuntime(
           $container[0],
           id,
-          tooltipImages
+          tooltipImages,
+          function () {
+            self.trigger('resize');
+          }
         );
       }
       return tooltipRuntime.initialize();

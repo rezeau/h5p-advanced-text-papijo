@@ -80,6 +80,7 @@
         assert(context.controller.connectionObserver === null, 'Connection observer remained attached');
         assert(removedBubble.resizeObserver === null, 'Bubble ResizeObserver remained attached');
         assert(removedBubble.animationFrame === null, 'Bubble animation frame remained scheduled');
+        assert(removedBubble.layoutFrame === null, 'Bubble layout frame remained scheduled');
         record('root cleanup releases observer and frame resources');
 
         fixture.appendChild(context.root);
