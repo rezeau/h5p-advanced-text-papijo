@@ -3,7 +3,7 @@
   "description": "Displays richly formatted text and supports author-defined tooltips that can be created, edited, and removed in the H5P editor.",
   "majorVersion": 1,
   "minorVersion": 2,
-  "patchVersion": 0,
+  "patchVersion": 1,
   "runnable": 1,
   "machineName": "H5P.AdvancedTextPapiJo",
   "author": "Joubel",

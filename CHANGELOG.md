@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.1
+
+- Fixed image tooltips being vertically clipped when there is insufficient space.
+- Added flip-above placement and temporary in-flow space reservation when neither side fits.
+- Propagated H5P resize events when tooltip layout space changes.
+- Improved cleanup and outside-click handling across accessible parent documents.
+
 ## 1.2.0
 
 - Added H5P-managed images to AdvancedTextPapiJo tooltips.
