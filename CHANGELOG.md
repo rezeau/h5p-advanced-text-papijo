@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.2
+
+- Enlarged the Tooltip text authoring field, made it vertically resizable, and clarified that text is optional when an image is used.
+- Showed Image alternative text only while a tooltip image exists and cleared it when the image is replaced with a different image.
+- Streamlined Edit mode to Update tooltip | Cancel | Remove tooltip and improved guidance when both tooltip text and image are removed.
+- Removed the unnecessary tooltip-image Edit image and Edit copyright controls.
+
 ## 1.2.1
 
 - Fixed image tooltips being vertically clipped when there is insufficient space.

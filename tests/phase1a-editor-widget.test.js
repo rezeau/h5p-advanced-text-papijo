@@ -280,7 +280,7 @@ test('declares the widget, span tag, dependency, and release versions', () => {
     semantics[1].field.fields.map((field) => field.name),
     ['id', 'image', 'alt']
   );
-  assert.equal(library.patchVersion, 1);
+  assert.equal(library.patchVersion, 2);
   assert.deepEqual(library.editorDependencies, [{
     machineName: 'H5PEditor.AdvancedTextPapiJoTooltip',
     majorVersion: 1,
@@ -288,7 +288,7 @@ test('declares the widget, span tag, dependency, and release versions', () => {
   }]);
   assert.equal(editorLibrary.runnable, 0);
   assert.equal(editorLibrary.machineName, 'H5PEditor.AdvancedTextPapiJoTooltip');
-  assert.equal(editorLibrary.patchVersion, 0);
+  assert.equal(editorLibrary.patchVersion, 1);
   assert.deepEqual(editorLibrary.preloadedCss, [{
     path: 'advanced-text-papijo-tooltip.css'
   }]);
