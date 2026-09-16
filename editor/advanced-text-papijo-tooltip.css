@@ -28,6 +28,8 @@
   display: block;
   margin-top: 0.25em;
   max-width: 32em;
+  min-height: 3.5em;
+  resize: vertical;
   width: 100%;
 }
 
@@ -37,6 +39,10 @@
   margin-top: 0.25em;
   max-width: 32em;
   width: 100%;
+}
+
+.papijo-tooltip-authoring-alt-field[hidden] {
+  display: none;
 }
 
 .papijo-tooltip-authoring-image {

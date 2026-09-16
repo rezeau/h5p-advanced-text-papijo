@@ -125,7 +125,8 @@
         context.widget.addTooltipAuthoringControls();
         assert(context.widget.$createTooltipButton.prop('hidden'), 'Create remained visible inside tooltip');
         assert(!context.widget.$editTooltipButton.prop('hidden'), 'Edit was not available inside tooltip');
-        assert(!context.widget.$removeTooltipButton.prop('hidden'), 'Remove was not available inside tooltip');
+        assert(context.widget.$removeTooltipButton.parent().length === 0,
+          'Remove appeared outside the Edit form');
         record('caret inside existing tooltip', { text: detection.text });
 
         setSelection(context.editor, 10, 20);
@@ -196,6 +197,8 @@
         setSelection(context.editor, 8, 18);
         const beforeRemoveText = visibleText(context.editor.getData());
         context.widget.addTooltipAuthoringControls();
+        context.widget.$editTooltipButton.trigger(window.H5P.jQuery.Event('mousedown'));
+        context.widget.$editTooltipButton.trigger('click');
         context.widget.$removeTooltipButton.trigger(window.H5P.jQuery.Event('mousedown'));
         context.widget.$removeTooltipButton.trigger('click');
         const removed = context.editor.getData();
@@ -270,6 +273,9 @@
         context.widget.addTooltipAuthoringControls();
         assert(context.widget.$createTooltipButton.text() === 'Create tooltip', 'English H5P translation did not load');
         assert(context.widget.$editTooltipButton.text() === 'Edit tooltip', 'English edit translation did not load');
+        assert(english.libraryStrings.enterTooltipTextOrImageOrRemove ===
+          'Enter tooltip text or choose an image (or Remove tooltip).',
+        'English edit validation translation did not load');
         record('English strings through H5P translation mechanism');
         await closeEditor(context);
 
@@ -278,6 +284,10 @@
         context.widget.addTooltipAuthoringControls();
         assert(context.widget.$createTooltipButton.text() === 'Créer une infobulle', 'French H5P translation did not load');
         assert(context.widget.$removeTooltipButton.text() === 'Supprimer l’infobulle', 'French remove translation did not load');
+        assert(french.libraryStrings.enterTooltipTextOrImageOrRemove ===
+          'Saisissez le texte de l’infobulle ou choisissez une image ' +
+            '(ou supprimez l’infobulle).',
+        'French edit validation translation did not load');
         record('French strings through H5P translation mechanism');
         await closeEditor(context);
 

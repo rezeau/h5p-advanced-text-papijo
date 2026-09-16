@@ -11,7 +11,8 @@
   var AUTHORING_EVENT_NAMESPACE = '.advancedTextPapiJoTooltip';
   var authoringUiId = 0;
   var IMAGE_FIELD = {
-    name: 'image', type: 'image', label: 'Tooltip image', optional: true
+    name: 'image', type: 'image', label: 'Tooltip image', optional: true,
+    disableCopyright: true
   };
 
   function translate(key) {
@@ -44,6 +45,14 @@
       widget.parent.children.find(function (child) {
         return child instanceof TooltipImagesStore;
       }) : null;
+  }
+
+  function hasTooltipImage(image) {
+    return image && typeof image.path === 'string' && image.path.trim() !== '';
+  }
+
+  function getTooltipImagePath(image) {
+    return hasTooltipImage(image) ? image.path.trim() : null;
   }
 
   function validateTooltipText(value) {
@@ -341,8 +350,10 @@
       selection
     ).valid;
     this.$createTooltipButton.prop('hidden', !canCreate);
-    this.$editTooltipButton.prop('hidden', !hasTooltip);
-    this.$removeTooltipButton.prop('hidden', !hasTooltip);
+    this.$editTooltipButton.prop(
+      'hidden',
+      !hasTooltip || this.tooltipFormMode === 'edit'
+    );
     if (detection.kind === 'invalid') {
       this.$tooltipStatus.text(detection.message);
     }
@@ -358,11 +369,15 @@
     this.$tooltipInput.val('');
     this.$tooltipAltInput.val('');
     this.destroyTooltipImageWidget();
+    this.$removeTooltipButton.detach().prop('hidden', true);
     if (restoreSelection) {
       this.restoreEditorSelection();
     }
     this.preservedTooltipSelection = null;
     this.tooltipFormMode = null;
+    if (this.tooltipSelectionEditor) {
+      this.refreshTooltipActions(this.tooltipSelectionEditor.model.document.selection);
+    }
   };
 
   AdvancedTextPapiJoTooltip.prototype.openTooltipForm = function (mode, text, detection) {
@@ -372,14 +387,23 @@
     var definition = store && this.tooltipFormTooltipId ?
       store.getDefinition(this.tooltipFormTooltipId) : null;
     this.tooltipImageDraft = definition ? clone(definition.image) : undefined;
+    this.tooltipAltImagePath = getTooltipImagePath(this.tooltipImageDraft);
     var sanitizer = H5PEditor.AdvancedTextPapiJoTooltipSanitizer;
     this.$tooltipInput.val(sanitizer ?
       sanitizer.toAuthoringText(text || '') : (text || ''));
     this.$tooltipApply.text(translate(
       mode === 'edit' ? 'updateTooltip' : 'applyTooltip'
     ));
+    if (mode === 'edit') {
+      this.$editTooltipButton.prop('hidden', true);
+    }
+    this.$removeTooltipButton.detach().prop('hidden', true);
+    if (mode === 'edit') {
+      this.$removeTooltipButton.appendTo(this.$tooltipForm).prop('hidden', false);
+    }
     this.$tooltipStatus.text('');
     this.$tooltipAltInput.val(definition ? definition.alt : '');
+    this.syncTooltipAltField();
     this.mountTooltipImageWidget();
     this.$tooltipForm.prop('hidden', false);
     this.$createTooltipButton.attr('aria-expanded', mode === 'create' ? 'true' : 'false');
@@ -400,7 +424,18 @@
     }
     if (!preserveDraft) {
       this.tooltipImageDraft = undefined;
+      this.tooltipAltImagePath = null;
       this.tooltipFormTooltipId = null;
+      this.syncTooltipAltField();
+    }
+  };
+
+  AdvancedTextPapiJoTooltip.prototype.syncTooltipAltField = function () {
+    if (this.$tooltipAltField) {
+      this.$tooltipAltField.prop(
+        'hidden',
+        !hasTooltipImage(this.tooltipImageDraft)
+      );
     }
   };
 
@@ -426,23 +461,40 @@
             !self.tooltipFormMode) {
           return;
         }
+        var nextImagePath = getTooltipImagePath(value);
+        if (nextImagePath && self.tooltipAltImagePath &&
+            nextImagePath !== self.tooltipAltImagePath) {
+          self.$tooltipAltInput.val('');
+        }
         self.tooltipImageDraft = value;
+        if (nextImagePath) {
+          self.tooltipAltImagePath = nextImagePath;
+        }
+        self.syncTooltipAltField();
       }
     );
     self.tooltipImageWidget = imageWidget;
     imageWidget.appendTo(self.$tooltipImageField);
+    // H5P's image widget has no supported switch for its Crop/Rotate editor.
+    // Remove only this tooltip widget instance's trigger; selection and replacement remain.
+    if (imageWidget.$editImage &&
+        typeof imageWidget.$editImage.remove === 'function') {
+      imageWidget.$editImage.remove();
+    }
   };
 
   function createTooltipAuthoringElements(self) {
     var formId = 'papijo-tooltip-form-' + (++authoringUiId);
+    var inputId = formId + '-text';
     self.$tooltipStatus = H5PEditor.$('<p>', {
       'class': 'papijo-tooltip-authoring-status', 'aria-live': 'polite'
     });
-    self.$tooltipInput = H5PEditor.$('<input>', {
-      type: 'text', 'class': 'papijo-tooltip-authoring-input'
+    self.$tooltipInput = H5PEditor.$('<textarea>', {
+      id: inputId, rows: 2, 'class': 'papijo-tooltip-authoring-input'
     });
     var $label = H5PEditor.$('<label>', {
-      'class': 'papijo-tooltip-authoring-label', text: translate('tooltipText')
+      'class': 'papijo-tooltip-authoring-label', 'for': inputId,
+      text: translate('tooltipText')
     }).append(self.$tooltipInput);
     self.$tooltipImageField = H5PEditor.$('<div>', {
       'class': 'papijo-tooltip-authoring-image'
@@ -450,8 +502,11 @@
     self.$tooltipAltInput = H5PEditor.$('<input>', {
       type: 'text', 'class': 'papijo-tooltip-authoring-alt'
     });
-    var $altLabel = H5PEditor.$('<label>', {
-      'class': 'papijo-tooltip-authoring-label', text: translate('imageAltText')
+    self.$tooltipAltField = H5PEditor.$('<label>', {
+      'class': 'papijo-tooltip-authoring-label ' +
+        'papijo-tooltip-authoring-alt-field',
+      hidden: true,
+      text: translate('imageAltText')
     }).append(self.$tooltipAltInput);
     self.$tooltipApply = H5PEditor.$('<button>', {
       type: 'submit', 'class': 'papijo-tooltip-authoring-apply',
@@ -463,7 +518,7 @@
     });
     self.$tooltipForm = H5PEditor.$('<form>', {
       id: formId, 'class': 'papijo-tooltip-authoring-form', hidden: true
-    }).append($label, self.$tooltipImageField, $altLabel,
+    }).append($label, self.$tooltipImageField, self.$tooltipAltField,
       self.$tooltipApply, $cancel);
     self.$createTooltipButton = H5PEditor.$('<button>', {
       type: 'button', 'class': 'papijo-tooltip-authoring-create',
@@ -482,7 +537,7 @@
     self.$tooltipControls = H5PEditor.$('<div>', {
       'class': 'papijo-tooltip-authoring-controls'
     }).append(self.$createTooltipButton, self.$editTooltipButton,
-      self.$removeTooltipButton, self.$tooltipForm, self.$tooltipStatus)
+      self.$tooltipForm, self.$tooltipStatus)
       .appendTo(self.$item);
 
     return $cancel;
@@ -549,9 +604,7 @@
         return;
       }
       self.$tooltipStatus.text(translate('tooltipRemoved'));
-      self.restoreEditorSelection();
-      self.preservedTooltipSelection = null;
-      self.refreshTooltipActions(self.ckeditor.model.document.selection);
+      self.closeTooltipForm(true);
     });
   }
 
@@ -560,8 +613,7 @@
       event.preventDefault();
       var isEdit = self.tooltipFormMode === 'edit';
       var image = self.tooltipImageDraft;
-      var hasImage = image && typeof image.path === 'string' &&
-        image.path.trim() !== '';
+      var hasImage = hasTooltipImage(image);
       var alt = self.$tooltipAltInput.val().trim();
       if (hasImage && alt === '') {
         self.$tooltipStatus.text(translate('enterImageAltText'));
@@ -580,8 +632,13 @@
         tooltipText: self.$tooltipInput.val()
       });
       if (!result || !result.valid) {
-        self.$tooltipStatus.text(result && result.message ? result.message :
-          translate(isEdit ? 'unableToUpdateTooltip' : 'unableToCreateTooltip'));
+        var message = result && result.message ? result.message :
+          translate(isEdit ? 'unableToUpdateTooltip' : 'unableToCreateTooltip');
+        if (isEdit && !hasImage &&
+            message === translate('enterTooltipTextOrImage')) {
+          message = translate('enterTooltipTextOrImageOrRemove');
+        }
+        self.$tooltipStatus.text(message);
         return;
       }
       if (hasImage) {
@@ -589,13 +646,11 @@
       }
       self.$tooltipStatus.text(translate(isEdit ? 'tooltipUpdated' : 'tooltipCreated'));
       self.closeTooltipForm(true);
-      self.refreshTooltipActions(self.ckeditor.model.document.selection);
     });
 
     $cancel.on('click' + AUTHORING_EVENT_NAMESPACE, function () {
       self.$tooltipStatus.text('');
       self.closeTooltipForm(true);
-      self.refreshTooltipActions(self.ckeditor.model.document.selection);
     });
   }
 
@@ -624,6 +679,7 @@
     this.$tooltipStatus = null;
     this.$tooltipInput = null;
     this.$tooltipAltInput = null;
+    this.$tooltipAltField = null;
     this.$tooltipImageField = null;
     this.$tooltipApply = null;
     this.$tooltipForm = null;

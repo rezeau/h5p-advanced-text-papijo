@@ -28,6 +28,10 @@ const editorSanitizerSource = fs.readFileSync(
   path.join(root, 'editor', 'advanced-text-papijo-tooltip-sanitizer.js'),
   'utf8'
 );
+const editorCssSource = fs.readFileSync(
+  path.join(root, 'editor', 'advanced-text-papijo-tooltip.css'),
+  'utf8'
+);
 
 function createWidget(contextExtras = {}) {
   function Html(parent, field, params, setValue) {
@@ -179,6 +183,7 @@ test('loads complete English and French editor translations', () => {
     'tooltipText',
     'imageAltText',
     'enterTooltipTextOrImage',
+    'enterTooltipTextOrImageOrRemove',
     'enterImageAltText',
     'applyTooltip',
     'updateTooltip',
@@ -198,6 +203,70 @@ test('loads complete English and French editor translations', () => {
   });
   assert.equal(english.libraryStrings.createTooltip, 'Create tooltip');
   assert.equal(french.libraryStrings.createTooltip, 'Créer une infobulle');
+  assert.equal(english.libraryStrings.applyTooltip, 'Add tooltip');
+  assert.equal(french.libraryStrings.applyTooltip, 'Ajouter l’infobulle');
+  assert.equal(
+    english.libraryStrings.enterTooltipTextOrImage,
+    'Enter tooltip text or choose an image.'
+  );
+  assert.equal(
+    french.libraryStrings.enterTooltipTextOrImage,
+    'Saisissez un texte d’infobulle ou choisissez une image.'
+  );
+  assert.equal(
+    english.libraryStrings.enterTooltipTextOrImageOrRemove,
+    'Enter tooltip text or choose an image (or Remove tooltip).'
+  );
+  assert.equal(
+    french.libraryStrings.enterTooltipTextOrImageOrRemove,
+    'Saisissez le texte de l’infobulle ou choisissez une image ' +
+      '(ou supprimez l’infobulle).'
+  );
+  assert.equal(
+    english.libraryStrings.tooltipText,
+    'Tooltip text (optional when an image is selected)'
+  );
+  assert.equal(
+    french.libraryStrings.tooltipText,
+    'Texte de l’infobulle (facultatif si une image est sélectionnée)'
+  );
+});
+
+test('declares the larger native tooltip textarea and its layout', () => {
+  assert.match(widgetSource, /H5PEditor\.\$\('<textarea>',\s*\{[\s\S]*?rows:\s*2/);
+  assert.doesNotMatch(
+    widgetSource,
+    /H5PEditor\.\$\('<input>',\s*\{\s*type:\s*'text',\s*'class':\s*'papijo-tooltip-authoring-input'/
+  );
+  assert.match(widgetSource, /'for':\s*inputId/);
+  assert.match(editorCssSource, /\.papijo-tooltip-authoring-input\s*\{[\s\S]*?box-sizing:\s*border-box;/);
+  assert.match(editorCssSource, /\.papijo-tooltip-authoring-input\s*\{[\s\S]*?max-width:\s*32em;/);
+  assert.match(editorCssSource, /\.papijo-tooltip-authoring-input\s*\{[\s\S]*?min-height:\s*3\.5em;/);
+  assert.match(editorCssSource, /\.papijo-tooltip-authoring-input\s*\{[\s\S]*?resize:\s*vertical;/);
+  assert.match(editorCssSource, /\.papijo-tooltip-authoring-input\s*\{[\s\S]*?width:\s*100%;/);
+  assert.match(
+    widgetSource,
+    /papijo-tooltip-authoring-alt-field'[\s\S]*?hidden:\s*true/
+  );
+  assert.match(
+    editorCssSource,
+    /\.papijo-tooltip-authoring-alt-field\[hidden\]\s*\{[\s\S]*?display:\s*none;/
+  );
+});
+
+test('suppresses only tooltip image editing and copyright controls', () => {
+  assert.match(
+    widgetSource,
+    /var IMAGE_FIELD = \{[\s\S]*?disableCopyright:\s*true[\s\S]*?\};/
+  );
+  assert.match(
+    widgetSource,
+    /imageWidget\.appendTo\(self\.\$tooltipImageField\);[\s\S]*?imageWidget\.\$editImage\.remove\(\);/
+  );
+  assert.doesNotMatch(
+    editorCssSource,
+    /h5p-editing-image-button|h5p-copyright-button/
+  );
 });
 
 test('declares the widget, span tag, dependency, and release versions', () => {

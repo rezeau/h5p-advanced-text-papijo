@@ -206,6 +206,7 @@
           'Edit failed after replacement'
         );
         setSelection(replacement.editor, 2, 6);
+        triggerButton(replacement.widget.$editTooltipButton);
         triggerButton(replacement.widget.$removeTooltipButton);
         output = replacement.editor.getData();
         assert(!output.includes('papijo-tooltip'), 'Remove failed after replacement');

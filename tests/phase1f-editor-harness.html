@@ -72,20 +72,39 @@
         });
       }
 
-      async function openEditor(html) {
+      async function openEditor(html, tooltipImages) {
         fixture.innerHTML = '<div class="widget-shell"><div class="editor-host"></div></div>';
         const shell = fixture.querySelector('.widget-shell');
         const host = fixture.querySelector('.editor-host');
         host.innerHTML = html;
+        const parent = { children: [] };
         const widget = new Widget(
-          {}, JSON.parse(JSON.stringify(semantics[0])), html, function () {}
+          parent, JSON.parse(JSON.stringify(semantics[0])), html, function () {}
         );
+        parent.children.push(widget);
+        let storedDefinitions = Array.isArray(tooltipImages) ?
+          JSON.parse(JSON.stringify(tooltipImages)) : undefined;
+        let imageStore = null;
+        if (storedDefinitions) {
+          imageStore = new Widget.TooltipImagesStore(
+            parent,
+            semantics[1],
+            storedDefinitions,
+            function (_field, value) { storedDefinitions = value; }
+          );
+          parent.children.push(imageStore);
+        }
         const editor = await ClassicEditor.create(host, widget.getCKEditorConfig());
         widget.ckeditor = editor;
         widget.$input = H5P.jQuery(host);
         widget.$errors = H5P.jQuery('<div>');
         widget.$item = H5P.jQuery(shell);
-        return { editor: editor, widget: widget };
+        return {
+          editor: editor,
+          widget: widget,
+          imageStore: imageStore,
+          getStoredDefinitions: function () { return storedDefinitions; }
+        };
       }
 
       async function closeEditor(context) {
@@ -137,7 +156,84 @@
           'Fish & chips "quoted" \'single\''
         );
 
-        let context = await openEditor('<p>Create formatted tooltip</p>');
+        let context = await openEditor('<p>Create tooltip through interface</p>');
+        setSelection(context.editor, 0, 6);
+        context.widget.addTooltipAuthoringControls();
+        context.widget.$createTooltipButton.trigger(H5P.jQuery.Event('mousedown'));
+        context.widget.$createTooltipButton.trigger('click');
+        const tooltipControl = context.widget.$tooltipInput[0];
+        const tooltipLabel = context.widget.$tooltipForm.find(
+          '.papijo-tooltip-authoring-label'
+        )[0];
+        assert(tooltipControl.tagName === 'TEXTAREA',
+          'Tooltip text control was not a textarea');
+        assert(tooltipControl.getAttribute('rows') === '2',
+          'Tooltip textarea did not use two rows');
+        assert(tooltipControl.classList.contains('papijo-tooltip-authoring-input'),
+          'Tooltip textarea lost its authoring class');
+        assert(tooltipControl.id && document.querySelectorAll(
+          '#' + tooltipControl.id
+        ).length === 1, 'Tooltip textarea id was missing or not unique');
+        assert(tooltipLabel.getAttribute('for') === tooltipControl.id,
+          'Tooltip label was not explicitly associated with the textarea');
+        assert(context.widget.$tooltipInput.val() === '',
+          'Create form did not open with empty tooltip text');
+        const createActionLabels = context.widget.$tooltipForm.children('button')
+          .map(function () { return this.textContent; }).get();
+        assert(JSON.stringify(createActionLabels) ===
+          JSON.stringify(['Add tooltip', 'Cancel']) &&
+          context.widget.$tooltipForm.find(
+            '.papijo-tooltip-authoring-remove'
+          ).length === 0 && context.widget.$editTooltipButton.prop('hidden'),
+        'Create form actions or toolbar state were incorrect');
+        context.widget.$tooltipApply.trigger('click');
+        assert(!context.widget.$tooltipForm.prop('hidden') &&
+          context.widget.$tooltipStatus.text() ===
+            'Enter tooltip text or choose an image.' &&
+          context.editor.getData() === '<p>Create tooltip through interface</p>',
+        'Create empty-content validation message changed');
+        record('create actions exclude Remove and retain empty validation message');
+        assert(context.widget.$tooltipAltField.prop('hidden'),
+          'Create form displayed alternative text without an image');
+        context.widget.$tooltipAltInput[0].focus();
+        assert(document.activeElement !== context.widget.$tooltipAltInput[0],
+          'Hidden alternative text input accepted focus');
+        context.widget.$tooltipInput.trigger('focus');
+        assert(document.activeElement === tooltipControl,
+          'Create form did not focus the tooltip textarea');
+        const beforeEnter = context.editor.getData();
+        tooltipControl.dispatchEvent(new KeyboardEvent('keydown', {
+          key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true,
+          cancelable: true
+        }));
+        assert(!context.widget.$tooltipForm.prop('hidden') &&
+          context.editor.getData() === beforeEnter,
+        'Enter invoked tooltip application');
+        record('textarea structure, association, create focus, and Enter behavior');
+        context.widget.$tooltipInput.val('Cancelled text');
+        context.widget.$tooltipForm.find('.papijo-tooltip-authoring-cancel')
+          .trigger('click');
+        assert(context.widget.$tooltipForm.prop('hidden') &&
+          context.editor.getData() === beforeEnter,
+        'Cancel changed tooltip content');
+        record('textarea cancel leaves content unchanged');
+        await closeEditor(context);
+
+        context = await openEditor('<p>Add tooltip through interface</p>');
+        setSelection(context.editor, 0, 3);
+        context.widget.addTooltipAuthoringControls();
+        context.widget.$createTooltipButton.trigger(H5P.jQuery.Event('mousedown'));
+        context.widget.$createTooltipButton.trigger('click');
+        context.widget.$tooltipInput.val('Added explicitly');
+        context.widget.$tooltipApply.trigger('click');
+        assert(context.widget.$tooltipForm.prop('hidden') &&
+          context.editor.getData().includes(
+            'data-papijo-tooltip="Added explicitly"'
+          ), 'Clicking Add did not apply tooltip text');
+        record('clicking Add explicitly saves tooltip text');
+        await closeEditor(context);
+
+        context = await openEditor('<p>Create formatted tooltip</p>');
         setSelection(context.editor, 7, 16);
         let operation = context.editor.execute('createPapijoTooltip', {
           tooltipText: 'A <strong>very important</strong> term'
@@ -146,7 +242,7 @@
         assert(operation.valid && output.includes(
           'data-papijo-tooltip="A &lt;strong&gt;very important&lt;/strong&gt; term"'
         ), 'Formatted creation was not attribute-encoded safely: ' + output);
-        record('create formatted tooltip');
+        record('text-only tooltip remains valid');
 
         setSelection(context.editor, 9, 12);
         context.widget.addTooltipAuthoringControls();
@@ -156,11 +252,16 @@
           'A <strong>very important</strong> term', 'Edit input did not load markup');
         record('edit input loads restricted markup');
         context.widget.$tooltipInput.val('H<sub>2</sub>O and x<sup>2</sup>');
-        context.widget.$tooltipForm.trigger('submit');
+        context.widget.$tooltipApply.trigger('click');
         output = context.editor.getData();
-        assert(output.includes('H&lt;sub&gt;2&lt;/sub&gt;O and x&lt;sup&gt;2&lt;/sup&gt;'),
+        assert(output.includes('H&lt;sub&gt;2&lt;/sub&gt;O and x&lt;sup&gt;2&lt;/sup&gt;') &&
+          context.widget.$tooltipForm.prop('hidden') &&
+          !context.widget.$editTooltipButton.prop('hidden') &&
+          context.widget.$tooltipForm.find(
+            '.papijo-tooltip-authoring-remove'
+          ).length === 0,
           'Formatted edit was not stored');
-        record('edit formatted tooltip');
+        record('clicking Update saves edited tooltip text');
 
         context.editor.execute('undo');
         const undone = context.editor.getData();
@@ -176,6 +277,41 @@
         context = await openEditor(saved);
         assert(context.editor.getData() === saved, 'Formatted tooltip changed on reopen');
         record('formatted save and reopen');
+        await closeEditor(context);
+
+        context = await openEditor('<p>Image only tooltip</p>');
+        setSelection(context.editor, 0, 5);
+        operation = context.editor.execute('createPapijoTooltip', {
+          tooltipId: 'image-only-test', tooltipText: ''
+        });
+        assert(operation.valid && context.editor.getData().includes(
+          'data-papijo-tooltip-id="image-only-test"'
+        ), 'Image-only tooltip was rejected');
+        record('image-only tooltip remains valid');
+        await closeEditor(context);
+
+        context = await openEditor('<p>Text and image tooltip</p>');
+        setSelection(context.editor, 0, 4);
+        operation = context.editor.execute('createPapijoTooltip', {
+          tooltipId: 'text-image-test', tooltipText: 'Combined'
+        });
+        assert(operation.valid && context.editor.getData().includes(
+          'data-papijo-tooltip="Combined"'
+        ) && context.editor.getData().includes(
+          'data-papijo-tooltip-id="text-image-test"'
+        ), 'Text-plus-image tooltip was rejected');
+        record('text-plus-image tooltip remains valid');
+        await closeEditor(context);
+
+        context = await openEditor('<p>Empty tooltip</p>');
+        setSelection(context.editor, 0, 5);
+        operation = context.editor.execute('createPapijoTooltip', {
+          tooltipText: ''
+        });
+        assert(!operation.valid && !context.editor.getData().includes(
+          'papijo-tooltip'
+        ), 'Empty tooltip without an image was accepted');
+        record('empty tooltip without image remains invalid');
         await closeEditor(context);
 
         context = await openEditor(
@@ -243,18 +379,71 @@
 
         const delayedImageWidgets = [];
         H5PEditor.widgets.image = function (_parent, _field, value, setValue) {
+          this.field = _field;
           this.value = value;
           this.setValue = setValue;
           this.removed = false;
+          this.$editImage = H5P.jQuery('<button>', {
+            'class': 'h5p-editing-image-button', text: 'Edit image'
+          });
+          this.$widgetDom = H5P.jQuery('<div>').append(this.$editImage);
+          if (!this.field.disableCopyright) {
+            this.$widgetDom.append(H5P.jQuery('<button>', {
+              'class': 'h5p-copyright-button', text: 'Edit copyright'
+            }));
+          }
+          if (value && value.path) {
+            this.$widgetDom.append(H5P.jQuery('<a>', {
+              'class': 'thumbnail', href: '#', text: value.path
+            }));
+          }
           delayedImageWidgets.push(this);
         };
-        H5PEditor.widgets.image.prototype.appendTo = function () {};
+        H5PEditor.widgets.image.prototype.appendTo = function ($target) {
+          this.$widgetDom.appendTo($target);
+        };
         H5PEditor.widgets.image.prototype.remove = function () {
           this.removed = true;
+          this.$widgetDom.remove();
         };
         H5PEditor.widgets.image.prototype.complete = function (value) {
           this.setValue(semantics[1].field.fields[1], value);
         };
+
+        context = await openEditor(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Existing" ' +
+            'data-papijo-tooltip-id="suppressed-image-controls">term</span></p>',
+          [{
+            id: 'suppressed-image-controls',
+            image: {
+              path: 'images/existing-controls.png',
+              mime: 'image/png',
+              copyright: { author: 'Existing author', license: 'CC BY' }
+            },
+            alt: 'Existing controlled image'
+          }]
+        );
+        setSelection(context.editor, 1, 3);
+        context.widget.addTooltipAuthoringControls();
+        context.widget.$editTooltipButton.trigger(H5P.jQuery.Event('mousedown'));
+        context.widget.$editTooltipButton.trigger('click');
+        assert(context.widget.tooltipImageWidget.field.disableCopyright === true &&
+          context.widget.$tooltipImageField.find(
+            '.h5p-editing-image-button, .h5p-copyright-button'
+          ).length === 0 &&
+          context.widget.$tooltipImageField.find('.thumbnail').length === 1 &&
+          context.widget.$tooltipAltInput.val() ===
+            'Existing controlled image' &&
+          context.widget.tooltipImageDraft.copyright.author ===
+            'Existing author',
+        'Tooltip image DOM retained unwanted controls or lost image state');
+        context.widget.$tooltipApply.trigger('click');
+        assert(context.getStoredDefinitions()[0].image.copyright.author ===
+          'Existing author' && context.getStoredDefinitions()[0].image.copyright.license ===
+          'CC BY',
+        'Updating a tooltip stripped existing copyright metadata');
+        record('image DOM suppresses edit controls and preserves metadata');
+        await closeEditor(context);
 
         context = await openEditor('<p>First tooltip and second tooltip</p>');
         setSelection(context.editor, 0, 5);
@@ -263,36 +452,65 @@
         context.widget.openTooltipForm('create');
         const firstImageWidget = delayedImageWidgets.at(-1);
         firstImageWidget.complete({ path: 'images/current.png' });
-        assert(context.widget.tooltipImageDraft.path === 'images/current.png',
-          'Current image widget callback did not update its own draft');
+        assert(context.widget.tooltipImageDraft.path === 'images/current.png' &&
+          firstImageWidget.field.disableCopyright === true &&
+          firstImageWidget.$editImage.parent().length === 0 &&
+          !context.widget.$tooltipAltField.prop('hidden') &&
+          context.widget.$tooltipAltInput.val() === '' &&
+          context.widget.$tooltipAltInput.closest('label')[0] ===
+            context.widget.$tooltipAltField[0],
+        'Image selection did not show the associated alternative text row');
         record('current image widget callback updates draft');
 
+        context.widget.$tooltipAltInput.val('Unstored temporary alt');
         context.widget.$tooltipForm.find('.papijo-tooltip-authoring-cancel').trigger('click');
         setSelection(context.editor, 18, 24);
         context.widget.captureModelSelection();
         context.widget.openTooltipForm('create');
         const secondImageWidget = delayedImageWidgets.at(-1);
         firstImageWidget.complete({ path: 'images/stale-after-cancel.png' });
-        assert(context.widget.tooltipImageDraft === undefined,
-          'Cancelled image widget callback changed the next tooltip draft');
+        assert(context.widget.tooltipImageDraft === undefined &&
+          context.widget.$tooltipAltField.prop('hidden') &&
+          context.widget.$tooltipAltInput.val() === '',
+        'Cancel retained or restored temporary image/alternative text state');
         record('cancelled image widget callback is ignored by next form');
 
         secondImageWidget.complete({ path: 'images/second.png' });
         assert(context.widget.tooltipImageDraft.path === 'images/second.png',
           'Second image widget callback did not update its own draft');
+        context.widget.$tooltipAltInput.val('Preserved draft alt');
         secondImageWidget.complete(undefined);
-        assert(context.widget.tooltipImageDraft === undefined,
-          'Current image removal did not clear its own draft');
-        secondImageWidget.complete({ path: 'images/second.png' });
+        assert(context.widget.tooltipImageDraft === undefined &&
+          context.widget.$tooltipAltField.prop('hidden') &&
+          context.widget.$tooltipAltInput.val() === 'Preserved draft alt',
+        'Image removal changed the existing alternative text lifecycle');
+        record('image removal hides row while preserving temporary alt text');
+        secondImageWidget.complete({ path: 'images/different-after-removal.png' });
+        assert(context.widget.tooltipImageDraft.path ===
+          'images/different-after-removal.png' &&
+          !context.widget.$tooltipAltField.prop('hidden') &&
+          context.widget.$tooltipAltInput.val() === '',
+        'Alternative text migrated to a different image selected after removal');
+        record('different image after removal clears preserved alternative text');
+        context.widget.$tooltipAltInput.val('New image draft alt');
         context.widget.mountTooltipImageWidget();
         const replacementImageWidget = delayedImageWidgets.at(-1);
         secondImageWidget.complete({ path: 'images/stale-after-remount.png' });
-        assert(context.widget.tooltipImageDraft.path === 'images/second.png',
+        assert(context.widget.tooltipImageDraft.path ===
+          'images/different-after-removal.png',
           'Replaced image widget callback changed the remounted draft');
+        replacementImageWidget.complete({
+          path: 'images/different-after-removal.png'
+        });
+        assert(context.widget.$tooltipAltInput.val() === 'New image draft alt',
+          'Same-image callback cleared its alternative text');
+        record('same-image callback preserves alternative text');
         replacementImageWidget.complete({ path: 'images/replacement.png' });
-        assert(context.widget.tooltipImageDraft.path === 'images/replacement.png',
-          'Remounted image widget callback did not update its own draft');
-        record('remount invalidates old callback and keeps current callback working');
+        assert(context.widget.tooltipImageDraft.path === 'images/replacement.png' &&
+          !context.widget.$tooltipAltField.prop('hidden') &&
+          context.widget.$tooltipAltInput.val() === '',
+        'Image replacement changed alternative text visibility or value');
+        record('remount ignores stale callback and different replacement clears alt');
 
         context.widget.destroyTooltipImageWidget();
         replacementImageWidget.complete({ path: 'images/stale-after-destroy.png' });
@@ -310,6 +528,246 @@
         record('full editor widget removal invalidates delayed callback');
         await context.editor.destroy();
         fixture.innerHTML = '';
+
+        context = await openEditor(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Text only">term</span></p>'
+        );
+        setSelection(context.editor, 1, 3);
+        context.widget.addTooltipAuthoringControls();
+        context.widget.$editTooltipButton.trigger(H5P.jQuery.Event('mousedown'));
+        context.widget.$editTooltipButton.trigger('click');
+        const editActionLabels = context.widget.$tooltipForm.children('button')
+          .map(function () { return this.textContent; }).get();
+        assert(context.widget.$tooltipAltField.prop('hidden') &&
+          context.widget.$editTooltipButton.prop('hidden') &&
+          JSON.stringify(editActionLabels) === JSON.stringify([
+            'Update tooltip', 'Cancel', 'Remove tooltip'
+          ]) && context.widget.$tooltipForm.find(
+            '.papijo-tooltip-authoring-remove'
+          ).length === 1,
+        'Text-only edit actions, order, or toolbar state were incorrect');
+        record('text-only edit uses ordered actions and hides toolbar Edit');
+        context.widget.$tooltipInput.val('');
+        context.widget.$tooltipApply.trigger('click');
+        assert(!context.widget.$tooltipForm.prop('hidden') &&
+          context.widget.$tooltipStatus.text() ===
+            'Enter tooltip text or choose an image (or Remove tooltip).' &&
+          context.editor.getData().includes('data-papijo-tooltip="Text only"') &&
+          context.widget.$tooltipForm.find(
+            '.papijo-tooltip-authoring-remove'
+          ).length === 1,
+        'Text-only empty edit did not retain the form and Remove action');
+        record('empty text-only edit uses extended validation message');
+        context.widget.$tooltipForm.find('.papijo-tooltip-authoring-cancel')
+          .trigger('click');
+        assert(context.widget.$tooltipForm.prop('hidden') &&
+          !context.widget.$editTooltipButton.prop('hidden') &&
+          context.widget.$tooltipForm.find(
+            '.papijo-tooltip-authoring-remove'
+          ).length === 0,
+        'Cancel did not restore the text-only tooltip action state');
+        record('Cancel restores Edit and removes the form-only Remove action');
+        context.widget.$editTooltipButton.trigger(H5P.jQuery.Event('mousedown'));
+        context.widget.$editTooltipButton.trigger('click');
+        assert(context.widget.$tooltipForm.find(
+          '.papijo-tooltip-authoring-remove'
+        ).length === 1, 'Repeated edit duplicated or lost the Remove action');
+        context.widget.$tooltipInput.val('Updated text only');
+        context.widget.$tooltipApply.trigger('click');
+        assert(context.editor.getData().includes(
+          'data-papijo-tooltip="Updated text only"'
+        ) && !context.widget.$editTooltipButton.prop('hidden') &&
+          context.widget.$tooltipForm.find(
+            '.papijo-tooltip-authoring-remove'
+          ).length === 0,
+        'Repeated edit/update did not restore a single toolbar state');
+        record('repeated edit cancel edit update cycle remains single-instance');
+        await closeEditor(context);
+
+        context = await openEditor(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="" ' +
+            'data-papijo-tooltip-id="edit-image-only">term</span></p>',
+          [{
+            id: 'edit-image-only',
+            image: { path: 'images/edit-image-only.png' },
+            alt: 'Existing image-only alt'
+          }]
+        );
+        setSelection(context.editor, 1, 3);
+        context.widget.addTooltipAuthoringControls();
+        context.widget.$editTooltipButton.trigger(H5P.jQuery.Event('mousedown'));
+        context.widget.$editTooltipButton.trigger('click');
+        assert(!context.widget.$tooltipAltField.prop('hidden') &&
+          context.widget.$tooltipAltInput.val() === 'Existing image-only alt',
+        'Image-only edit did not restore and show alternative text');
+        record('image-only edit restores visible alternative text');
+        context.widget.$tooltipForm.find('.papijo-tooltip-authoring-cancel')
+          .trigger('click');
+        assert(!context.widget.$editTooltipButton.prop('hidden') &&
+          context.widget.$tooltipForm.find(
+            '.papijo-tooltip-authoring-remove'
+          ).length === 0,
+        'Image-only Cancel did not restore the toolbar state');
+        await closeEditor(context);
+
+        context = await openEditor(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Clear me" ' +
+            'data-papijo-tooltip-id="empty-edit-image">term</span></p>',
+          [{
+            id: 'empty-edit-image',
+            image: { path: 'images/empty-edit.png' },
+            alt: 'Empty edit alt'
+          }]
+        );
+        const beforeEmptyEdit = context.editor.getData();
+        setSelection(context.editor, 1, 3);
+        context.widget.addTooltipAuthoringControls();
+        context.widget.$editTooltipButton.trigger(H5P.jQuery.Event('mousedown'));
+        context.widget.$editTooltipButton.trigger('click');
+        const emptyEditImageWidget = delayedImageWidgets.at(-1);
+        emptyEditImageWidget.complete(undefined);
+        context.widget.$tooltipInput.val('');
+        context.widget.$tooltipApply.trigger('click');
+        assert(!context.widget.$tooltipForm.prop('hidden') &&
+          context.widget.$tooltipStatus.text() ===
+            'Enter tooltip text or choose an image (or Remove tooltip).' &&
+          context.editor.getData() === beforeEmptyEdit &&
+          context.widget.$tooltipForm.find(
+            '.papijo-tooltip-authoring-remove'
+          ).length === 1,
+        'Image removal plus empty text did not use edit-specific validation');
+        record('empty image edit rejects Update and keeps Remove available');
+        context.widget.$removeTooltipButton.trigger(
+          H5P.jQuery.Event('mousedown')
+        );
+        context.widget.$removeTooltipButton.trigger('click');
+        assert(!context.editor.getData().includes('papijo-tooltip') &&
+          context.widget.$tooltipForm.prop('hidden') &&
+          context.widget.$editTooltipButton.prop('hidden') &&
+          context.widget.$tooltipForm.find(
+            '.papijo-tooltip-authoring-remove'
+          ).length === 0 && context.getStoredDefinitions().length === 1,
+        'Form Remove did not close cleanly through the existing removal path');
+        context.editor.execute('undo');
+        assert(context.editor.getData().includes(
+          'data-papijo-tooltip-id="empty-edit-image"'
+        ), 'Form removal was not undoable');
+        record('form Remove closes cleanly, defers image cleanup, and is undoable');
+        await closeEditor(context);
+
+        context = await openEditor(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Text remains" ' +
+            'data-papijo-tooltip-id="edit-remove-image">term</span></p>',
+          [{
+            id: 'edit-remove-image',
+            image: { path: 'images/edit-remove-image.png' },
+            alt: 'Existing removal alt'
+          }]
+        );
+        setSelection(context.editor, 1, 3);
+        context.widget.addTooltipAuthoringControls();
+        context.widget.$editTooltipButton.trigger(H5P.jQuery.Event('mousedown'));
+        context.widget.$editTooltipButton.trigger('click');
+        const removeImageWidget = delayedImageWidgets.at(-1);
+        removeImageWidget.complete(undefined);
+        assert(context.widget.$tooltipAltField.prop('hidden') &&
+          context.widget.$tooltipAltInput.val() === 'Existing removal alt',
+        'Edit image removal did not hide the row while preserving its value');
+        context.widget.$tooltipApply.trigger('click');
+        assert(!context.editor.getData().includes('data-papijo-tooltip-id') &&
+          context.getStoredDefinitions().length === 1,
+        'Update changed the established deferred image-definition cleanup');
+        context.imageStore.parent.params = { text: context.editor.getData() };
+        context.imageStore.validate();
+        assert(context.getStoredDefinitions() === undefined,
+          'Validation did not clean the image definition after removal');
+        record('edit image removal preserves deferred cleanup semantics');
+        await closeEditor(context);
+
+        context = await openEditor(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Unchanged" ' +
+            'data-papijo-tooltip-id="unchanged-image">term</span></p>',
+          [{
+            id: 'unchanged-image',
+            image: { path: 'images/unchanged.png' },
+            alt: 'Unchanged image alt'
+          }]
+        );
+        setSelection(context.editor, 1, 3);
+        context.widget.addTooltipAuthoringControls();
+        context.widget.$editTooltipButton.trigger(H5P.jQuery.Event('mousedown'));
+        context.widget.$editTooltipButton.trigger('click');
+        const unchangedWidget = delayedImageWidgets.at(-1);
+        unchangedWidget.complete({ path: 'images/unchanged.png' });
+        context.widget.$tooltipApply.trigger('click');
+        assert(context.getStoredDefinitions()[0].image.path ===
+          'images/unchanged.png' &&
+          context.getStoredDefinitions()[0].alt === 'Unchanged image alt',
+        'Update changed alternative text for an unchanged image');
+        record('unchanged existing image preserves stored alternative text');
+        await closeEditor(context);
+
+        context = await openEditor(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Caption" ' +
+            'data-papijo-tooltip-id="edit-combined">term</span></p>',
+          [{
+            id: 'edit-combined',
+            image: { path: 'images/edit-combined.png' },
+            alt: 'Existing combined alt'
+          }]
+        );
+        setSelection(context.editor, 1, 3);
+        context.widget.addTooltipAuthoringControls();
+        context.widget.$editTooltipButton.trigger(H5P.jQuery.Event('mousedown'));
+        context.widget.$editTooltipButton.trigger('click');
+        assert(!context.widget.$tooltipAltField.prop('hidden') &&
+          context.widget.$tooltipAltInput.val() === 'Existing combined alt',
+        'Text-plus-image edit did not restore and show alternative text');
+        record('text-plus-image edit restores visible alternative text');
+        const combinedWidget = delayedImageWidgets.at(-1);
+        combinedWidget.complete({ path: 'images/replaced-combined.png' });
+        assert(!context.widget.$tooltipAltField.prop('hidden') &&
+          context.widget.$tooltipAltInput.val() === '',
+        'Different image replacement did not clear alternative text');
+        context.widget.$tooltipAltInput.val('Replacement image alt');
+        context.widget.$tooltipApply.trigger('click');
+        assert(context.getStoredDefinitions()[0].image.path ===
+          'images/replaced-combined.png' &&
+          context.getStoredDefinitions()[0].alt === 'Replacement image alt',
+        'Update did not store replacement image alternative text');
+        record('edit image replacement clears then stores new alternative text');
+        await closeEditor(context);
+
+        context = await openEditor(
+          '<p><span class="papijo-tooltip" data-papijo-tooltip="Cancel" ' +
+            'data-papijo-tooltip-id="cancel-image">term</span></p>',
+          [{
+            id: 'cancel-image',
+            image: { path: 'images/cancel-original.png' },
+            alt: 'Cancel original alt'
+          }]
+        );
+        const beforeCancelData = context.editor.getData();
+        const beforeCancelDefinitions = JSON.stringify(
+          context.getStoredDefinitions()
+        );
+        setSelection(context.editor, 1, 3);
+        context.widget.addTooltipAuthoringControls();
+        context.widget.$editTooltipButton.trigger(H5P.jQuery.Event('mousedown'));
+        context.widget.$editTooltipButton.trigger('click');
+        const cancelWidget = delayedImageWidgets.at(-1);
+        cancelWidget.complete({ path: 'images/cancel-replacement.png' });
+        assert(context.widget.$tooltipAltInput.val() === '',
+          'Replacement did not clear alternative text before Cancel');
+        context.widget.$tooltipAltInput.val('Cancelled replacement alt');
+        context.widget.$tooltipForm.find('.papijo-tooltip-authoring-cancel')
+          .trigger('click');
+        assert(context.editor.getData() === beforeCancelData &&
+          JSON.stringify(context.getStoredDefinitions()) ===
+            beforeCancelDefinitions,
+        'Cancel persisted temporary image or alternative text changes');
+        record('cancel preserves stored image and alternative text');
+        await closeEditor(context);
 
         storedDefinitions = [{
           id: 'nested-retained',
@@ -333,7 +791,7 @@
           'Nested library validation incorrectly removed a referenced definition');
         record('nested library validation retains referenced image definition');
 
-        assert(results.length === 26, 'Expected 26 results, got ' + results.length);
+        assert(results.length === 49, 'Expected 49 results, got ' + results.length);
         document.getElementById('result').textContent = JSON.stringify({
           status: 'PASS', count: results.length, results: results
         }, null, 2);
