@@ -159,6 +159,8 @@
         let context = await openEditor('<p>Create tooltip through interface</p>');
         setSelection(context.editor, 0, 6);
         context.widget.addTooltipAuthoringControls();
+        assert(!context.widget.$createTooltipButton.prop('hidden'),
+          'Create tooltip was hidden for a valid selection');
         context.widget.$createTooltipButton.trigger(H5P.jQuery.Event('mousedown'));
         context.widget.$createTooltipButton.trigger('click');
         const tooltipControl = context.widget.$tooltipInput[0];
@@ -184,8 +186,12 @@
           JSON.stringify(['Add tooltip', 'Cancel']) &&
           context.widget.$tooltipForm.find(
             '.papijo-tooltip-authoring-remove'
-          ).length === 0 && context.widget.$editTooltipButton.prop('hidden'),
+          ).length === 0 && context.widget.$createTooltipButton.prop('hidden') &&
+          context.widget.$editTooltipButton.prop('hidden'),
         'Create form actions or toolbar state were incorrect');
+        setSelection(context.editor, 7, 14);
+        assert(context.widget.$createTooltipButton.prop('hidden'),
+          'Selection changes exposed Create tooltip while the Add form was open');
         context.widget.$tooltipApply.trigger('click');
         assert(!context.widget.$tooltipForm.prop('hidden') &&
           context.widget.$tooltipStatus.text() ===
@@ -214,9 +220,10 @@
         context.widget.$tooltipForm.find('.papijo-tooltip-authoring-cancel')
           .trigger('click');
         assert(context.widget.$tooltipForm.prop('hidden') &&
-          context.editor.getData() === beforeEnter,
+          context.editor.getData() === beforeEnter &&
+          !context.widget.$createTooltipButton.prop('hidden'),
         'Cancel changed tooltip content');
-        record('textarea cancel leaves content unchanged');
+        record('Create hides during Add and Cancel restores selection-driven state');
         await closeEditor(context);
 
         context = await openEditor('<p>Add tooltip through interface</p>');
@@ -224,13 +231,17 @@
         context.widget.addTooltipAuthoringControls();
         context.widget.$createTooltipButton.trigger(H5P.jQuery.Event('mousedown'));
         context.widget.$createTooltipButton.trigger('click');
+        assert(context.widget.$createTooltipButton.prop('hidden'),
+          'Create tooltip remained visible after reopening the Add form');
         context.widget.$tooltipInput.val('Added explicitly');
         context.widget.$tooltipApply.trigger('click');
         assert(context.widget.$tooltipForm.prop('hidden') &&
           context.editor.getData().includes(
             'data-papijo-tooltip="Added explicitly"'
-          ), 'Clicking Add did not apply tooltip text');
-        record('clicking Add explicitly saves tooltip text');
+          ) && context.widget.$createTooltipButton.prop('hidden') &&
+          !context.widget.$editTooltipButton.prop('hidden'),
+        'Clicking Add did not apply tooltip text or recompute toolbar state');
+        record('Add closes the form and recomputes tooltip toolbar state');
         await closeEditor(context);
 
         context = await openEditor('<p>Create formatted tooltip</p>');

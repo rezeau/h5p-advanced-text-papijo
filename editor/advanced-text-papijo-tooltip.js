@@ -349,7 +349,10 @@
       this.tooltipSelectionEditor,
       selection
     ).valid;
-    this.$createTooltipButton.prop('hidden', !canCreate);
+    this.$createTooltipButton.prop(
+      'hidden',
+      !canCreate || this.tooltipFormMode === 'create'
+    );
     this.$editTooltipButton.prop(
       'hidden',
       !hasTooltip || this.tooltipFormMode === 'edit'
@@ -394,6 +397,9 @@
     this.$tooltipApply.text(translate(
       mode === 'edit' ? 'updateTooltip' : 'applyTooltip'
     ));
+    if (mode === 'create') {
+      this.$createTooltipButton.prop('hidden', true);
+    }
     if (mode === 'edit') {
       this.$editTooltipButton.prop('hidden', true);
     }
