@@ -8,6 +8,36 @@ const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 const runtimeSource = fs.readFileSync(path.join(root, 'text.js'), 'utf8');
+const runtimeCssSource = fs.readFileSync(path.join(root, 'text.css'), 'utf8');
+const speechBubbleCssSource = fs.readFileSync(
+  path.join(root, 'advanced-text-papijo-speech-bubble.css'),
+  'utf8'
+);
+
+test('uses the primary text color for a themed root with a safe fallback', () => {
+  const rootRule = runtimeCssSource.match(
+    /\.h5p-theme\s+\.h5p-advanced-text\s*\{([^}]*)\}/
+  );
+
+  assert.ok(rootRule, 'the themed authored text root must have a color rule');
+  assert.match(
+    rootRule[1],
+    /color:\s*var\(--h5p-theme-text-primary,\s*inherit\)\s*;/
+  );
+  assert.doesNotMatch(rootRule[1], /background(?:-color)?\s*:/);
+  assert.doesNotMatch(runtimeCssSource, /\.h5p-advanced-text\s+\*/);
+  assert.doesNotMatch(runtimeCssSource, /!important/);
+});
+
+test('keeps the speech bubble light theme independent from authored text', () => {
+  const bubbleRule = speechBubbleCssSource.match(
+    /\.papijo-runtime-speech-bubble\s*\{([^}]*)\}/
+  );
+
+  assert.ok(bubbleRule, 'the speech bubble must retain its own color rule');
+  assert.match(bubbleRule[1], /background:\s*#fff\s*;/);
+  assert.match(bubbleRule[1], /color:\s*#222\s*;/);
+});
 
 function createRuntime(parameters) {
   function EventDispatcher() {}
