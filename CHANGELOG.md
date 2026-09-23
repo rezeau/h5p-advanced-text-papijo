@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.3
+
+- Fixed unreadable text in the Dark theme when AdvancedTextPapiJo is embedded inside ColumnPapiJo or InteractiveBookPapiJo.
+- Applied the theme's primary text color to embedded AdvancedTextPapiJo content while preserving standalone appearance and authored formatting.
+
 ## 1.2.2
 
 - Enlarged the Tooltip text authoring field, made it vertically resizable, and clarified that text is optional when an image is used.

@@ -280,7 +280,7 @@ test('declares the widget, span tag, dependency, and release versions', () => {
     semantics[1].field.fields.map((field) => field.name),
     ['id', 'image', 'alt']
   );
-  assert.equal(library.patchVersion, 2);
+  assert.equal(library.patchVersion, 3);
   assert.deepEqual(library.editorDependencies, [{
     machineName: 'H5PEditor.AdvancedTextPapiJoTooltip',
     majorVersion: 1,
