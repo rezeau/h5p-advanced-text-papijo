@@ -22,11 +22,13 @@ const routes = {
   '/jquery.js': 'C:\\my_first_h5p_environment\\libraries\\h5p-php-library\\js\\jquery.js',
   '/ckeditor.js': 'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\ckeditor\\ckeditor.js',
   '/h5peditor-html.js': 'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\scripts\\h5peditor-html.js',
+  '/h5peditor-application.css': 'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\styles\\css\\application.css',
   '/advanced-text-papijo-tooltip.js': path.join(
     root,
     'editor',
     'advanced-text-papijo-tooltip.js'
   ),
+  '/advanced-text-papijo-tooltip.css': path.join(root, 'editor', 'advanced-text-papijo-tooltip.css'),
   '/advanced-text-papijo-tooltip-selection.js': path.join(
     root,
     'editor',
@@ -42,6 +44,7 @@ const routes = {
     'advanced-text-papijo-tooltip-sanitizer.js'
   ),
   '/text.js': path.join(root, 'text.js'),
+  '/text.css': path.join(root, 'text.css'),
   '/advanced-text-papijo-speech-bubble.js': path.join(root, 'advanced-text-papijo-speech-bubble.js'),
   '/advanced-text-papijo-tooltip-runtime.js': path.join(root, 'advanced-text-papijo-tooltip-runtime.js'),
   '/advanced-text-papijo-speech-bubble.css': path.join(root, 'advanced-text-papijo-speech-bubble.css'),

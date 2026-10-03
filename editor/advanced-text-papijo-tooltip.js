@@ -274,6 +274,12 @@
       tableSort.extendConfig(config);
     }
     config.plugins.push(function (editor) {
+      editor.once('ready', function () {
+        editor.editing.view.change(function (writer) {
+          writer.addClass('papijo-advanced-text-editor',
+            editor.editing.view.document.getRoot());
+        });
+      });
       PapijoTooltipEditing(editor);
       if (tableSort) {
         tableSort.install(editor);
@@ -285,6 +291,8 @@
 
   AdvancedTextPapiJoTooltip.prototype.appendTo = function ($wrapper) {
     H5PEditor.Html.prototype.appendTo.call(this, $wrapper);
+    // H5P displays the source field before creating CKEditor on focus.
+    this.$input.addClass('papijo-advanced-text-editor');
     this.addTooltipAuthoringControls();
   };
 

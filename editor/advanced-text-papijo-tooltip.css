@@ -1,3 +1,8 @@
+.ckeditor.papijo-advanced-text-editor figure.table + *,
+.ck-content.papijo-advanced-text-editor figure.table + * {
+  clear: both;
+}
+
 .papijo-tooltip-authoring-controls {
   margin-top: 0.75em;
 }

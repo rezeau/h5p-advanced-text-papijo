@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>AdvancedTextPapiJo Phase 1D runtime verification</title>
+  <link rel="stylesheet" href="/text.css">
   <link rel="stylesheet" href="/advanced-text-papijo-speech-bubble.css">
   <link rel="stylesheet" href="/advanced-text-papijo-tooltip-runtime.css">
   <style>
@@ -163,6 +164,45 @@
         assert(context.root.querySelector('div[style*="overflow-x:auto"] table'), 'Existing table wrapper missing');
         record('existing table wrapping remains intact');
 
+        for (const alignment of ['left', 'right', 'center']) {
+          const float = alignment === 'center' ? 'none' : alignment;
+          const margin = alignment === 'center' ? '0 auto' : '0';
+          const followers = [
+            '<p style="margin:0">Following paragraph</p>',
+            '<h2 style="margin:0">Following heading</h2>',
+            '<div>Following block</div>'
+          ];
+          for (const follower of followers) {
+            context = createInstance(
+              '<p style="margin:0">Before table</p>' +
+              '<figure class="table" style="float:' + float +
+                ';width:160px;height:80px;margin:' + margin + '">' +
+                '<table><tbody><tr><td>Cell</td></tr></tbody></table>' +
+              '</figure>' + follower
+            );
+            const figure = context.root.querySelector('figure.table');
+            const figureRect = figure.getBoundingClientRect();
+            const rootRect = context.root.getBoundingClientRect();
+            const following = figure.nextElementSibling;
+            assert(following.getBoundingClientRect().top >= figureRect.bottom,
+              alignment + ' table must place following content below it');
+            assert(getComputedStyle(figure).cssFloat === float,
+              alignment + ' table float changed');
+            const expectedLeft = alignment === 'left' ? rootRect.left + 1 :
+              alignment === 'right' ? rootRect.right - 1 - figureRect.width :
+                rootRect.left + (rootRect.width - figureRect.width) / 2;
+            assert(Math.abs(figureRect.left - expectedLeft) < 0.5,
+              alignment + ' table horizontal alignment changed');
+            assert(getComputedStyle(figure.previousElementSibling).clear === 'none',
+              'Content before the table must not be cleared');
+            context.root.classList.remove('h5p-advanced-text');
+            assert(getComputedStyle(following).clear === 'none',
+              'Table clearing must be scoped to Advanced Text');
+            context.root.classList.add('h5p-advanced-text');
+          }
+          record(alignment + ' table alignment and following block layout');
+        }
+
         context = createInstance(
           '<p><span class="papijo-tooltip" data-papijo-tooltip="Fish &amp; chips &quot;quoted&quot; &amp;lt;safe&amp;gt; \'single\'">special</span></p>'
         );
@@ -317,7 +357,7 @@
           resizeCount: stabilizedResizeCount
         });
 
-        assert(results.length === 21, 'Expected 21 runtime results, got ' + results.length);
+        assert(results.length === 24, 'Expected 24 runtime results, got ' + results.length);
         document.getElementById('result').textContent = JSON.stringify({
           status: 'PASS', count: results.length, results: results
         }, null, 2);

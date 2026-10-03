@@ -2,6 +2,10 @@
   color: var(--h5p-theme-text-primary, inherit);
 }
 
+.h5p-advanced-text figure.table + * {
+  clear: both;
+}
+
 .h5p-advanced-text ul,
 .h5p-advanced-text ol {
   padding: 0;

@@ -81,6 +81,7 @@ each path below on that same origin and wait for the result block to report
 | `/` | Phase 1A CKEditor serialization |
 | `/phase1b.html` | Phase 1B creation |
 | `/phase1c.html` | Phase 1C edit, remove, and localization |
+| `/table-sort.html` | Table sorting, alignment, clearing before focus and after reopen, and editor styling scope |
 | `/selection-validation.html` | Existing 16-case selection acceptance baseline |
 | `/integration-stability.html` | Accordion and nested-editor integration |
 | `/phase1d-runtime.html` | Phase 1D runtime behavior and margin-collapse convergence |

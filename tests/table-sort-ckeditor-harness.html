@@ -3,12 +3,27 @@
 <head>
   <meta charset="utf-8">
   <title>AdvancedTextPapiJo table sorting verification</title>
+  <link rel="stylesheet" href="/h5peditor-application.css">
+  <link rel="stylesheet" href="/advanced-text-papijo-tooltip.css">
+  <style>
+    .ck.ck-editor,
+    .ckeditor { width: 640px; }
+  </style>
   <script src="/jquery.js"></script>
   <script>
     window.H5PIntegration = { editor: { wysiwygButtons: [] } };
     window.H5PEditor = {
       $: window.H5P.jQuery,
       widgets: {},
+      bindImportantDescriptionEvents: function () {},
+      createFieldMarkup: function (_field, input) {
+        return '<div class="field">' + input + '<div class="h5p-errors"></div></div>';
+      },
+      createImportantDescription: function () { return ''; },
+      getNextFieldId: (function () {
+        var nextId = 0;
+        return function () { return 'table-field-' + (++nextId); };
+      })(),
       t: function (_library, key) { return key; }
     };
     window.ns = window.H5PEditor;
@@ -20,7 +35,7 @@
   <script src="/advanced-text-papijo-table-sort.js"></script>
   <script src="/advanced-text-papijo-tooltip.js"></script>
 </head>
-<body>
+<body class="h5peditor">
   <div id="fixture"></div>
   <pre id="result">RUNNING</pre>
   <script>
@@ -57,12 +72,13 @@
         return cell;
       }
 
-      async function openEditor(html) {
+      async function openEditor(html, ordinary) {
         fixture.innerHTML = '<div class="editor-host"></div>';
         var host = fixture.querySelector('.editor-host');
         host.innerHTML = html;
         var field = JSON.parse(JSON.stringify(fieldDefinition));
-        var widget = new H5PEditor.AdvancedTextPapiJoTooltip(
+        var Widget = ordinary ? H5PEditor.Html : H5PEditor.AdvancedTextPapiJoTooltip;
+        var widget = new Widget(
           {}, field, html, function () {}
         );
         var editor = await ClassicEditor.create(host, widget.getCKEditorConfig());
@@ -75,11 +91,95 @@
         fixture.innerHTML = '';
       }
 
+      function openH5PField(html, ordinary) {
+        var field = JSON.parse(JSON.stringify(fieldDefinition));
+        var Widget = ordinary ? H5PEditor.Html : H5PEditor.AdvancedTextPapiJoTooltip;
+        var widget = new Widget({}, field, html, function () {});
+        widget.appendTo(H5P.jQuery(fixture));
+        return widget;
+      }
+
+      function assertInitialLayout(widget, alignment) {
+        var root = widget.$input[0];
+        var figure = root.querySelector('figure.table');
+        var following = figure.nextElementSibling;
+        assert(!widget.ckeditor && !root.classList.contains('ck-content'),
+          'Initial H5P display must be checked before CKEditor is created');
+        assert(!root.contains(document.activeElement),
+          'Initial H5P layout must be checked before focus or interaction');
+        assert(root.isConnected && root.getBoundingClientRect().width > 0,
+          'Initial H5P field must be attached and visible');
+        assert(following.getBoundingClientRect().top >= figure.getBoundingClientRect().bottom,
+          alignment + ' initial H5P display must place the paragraph below the table');
+        assert(root.classList.contains('papijo-advanced-text-editor') &&
+          getComputedStyle(following).clear === 'both',
+          'Initial H5P field must receive the Advanced Text clearing scope');
+        assert(getComputedStyle(figure).cssFloat ===
+          (alignment === 'center' ? 'none' : alignment),
+          'Initial H5P display must preserve table alignment');
+      }
+
+      function assertTableLayout(editor, alignment) {
+        var root = editor.editing.view.getDomRoot();
+        var figure = root.querySelector('figure.table');
+        var following = figure.nextElementSibling;
+        var figureRect = figure.getBoundingClientRect();
+        var rootRect = root.getBoundingClientRect();
+        var rootStyle = getComputedStyle(root);
+        var left = rootRect.left + parseFloat(rootStyle.borderLeftWidth) +
+          parseFloat(rootStyle.paddingLeft);
+        var right = rootRect.right - parseFloat(rootStyle.borderRightWidth) -
+          parseFloat(rootStyle.paddingRight);
+        var expectedLeft = alignment === 'left' ? left :
+          alignment === 'right' ? right - figureRect.width :
+            left + (right - left - figureRect.width) / 2;
+        assert(root.classList.contains('papijo-advanced-text-editor'),
+          'Advanced Text editing root must have its styling scope');
+        assert(following.getBoundingClientRect().top >= figureRect.bottom,
+          alignment + ' table must place the following paragraph below it');
+        assert(getComputedStyle(following).clear === 'both',
+          'The immediate following paragraph must clear both floats');
+        assert(getComputedStyle(following.nextElementSibling).clear === 'none',
+          'Later blocks must retain their normal clearing behavior');
+        assert(getComputedStyle(figure).cssFloat ===
+          (alignment === 'center' ? 'none' : alignment),
+          alignment + ' table float changed');
+        assert(Math.abs(figureRect.left - expectedLeft) < 1,
+          alignment + ' table horizontal alignment changed');
+        assert(!editor.getData().includes('papijo-advanced-text-editor'),
+          'The editor styling scope must not enter saved content');
+      }
+
       try {
         var original = '<table><thead><tr><th>Animal</th><th>Code</th></tr></thead>' +
           '<tbody><tr><td><span class="papijo-tooltip" data-papijo-tooltip="Striped cat">Tiger</span></td><td>A</td></tr>' +
           '<tr><td>Bear</td><td>B</td></tr><tr><td>Zebra</td><td>C</td></tr>' +
           '<tr><td>Camel</td><td>D</td></tr></tbody></table>';
+        for (var initialAlignment of ['left', 'center', 'right']) {
+          var initialHtml = '<figure class="table" style="width:160px;float:' +
+            (initialAlignment === 'center' ? 'none' : initialAlignment) + '">' +
+            original + '</figure><p>Following paragraph</p>';
+          var initialWidget = openH5PField(initialHtml);
+          assertInitialLayout(initialWidget, initialAlignment);
+          var initialSaved = initialWidget.validate();
+          assert(!initialSaved.includes('papijo-advanced-text-editor'),
+            'The initial field scope must not enter saved content');
+          initialWidget.remove();
+          var initialReopened = openH5PField(initialSaved);
+          assertInitialLayout(initialReopened, initialAlignment);
+          initialReopened.remove();
+          results.push({ name: initialAlignment + ' initial H5P display and reopen before focus' });
+        }
+
+        var ordinaryInitialWidget = openH5PField(initialHtml, true);
+        var ordinaryInitialRoot = ordinaryInitialWidget.$input[0];
+        assert(!ordinaryInitialRoot.classList.contains('papijo-advanced-text-editor') &&
+          getComputedStyle(ordinaryInitialRoot.querySelector('figure.table').nextElementSibling)
+            .clear === 'none',
+          'An ordinary initial H5P HTML field must retain its clearing behavior');
+        ordinaryInitialWidget.remove();
+        results.push({ name: 'ordinary initial H5P HTML display remains unaffected' });
+
         var ascendingContext = await openEditor(original);
         var selectedCell = setCaretInCell(ascendingContext.editor, 1, 0);
         var before = ascendingContext.editor.getData();
@@ -135,6 +235,40 @@
         results.push({ name: 'descending', output: descending });
         await closeEditor(descendingContext);
 
+        var layoutContext = await openEditor(original +
+          '<p>Following paragraph</p><h2>Following heading</h2>');
+        setCaretInCell(layoutContext.editor, 0, 0);
+        layoutContext.editor.execute('tableWidth', { value: '160px' });
+        for (var alignment of ['left', 'center', 'right']) {
+          layoutContext.editor.execute('tableAlignment', { value: alignment });
+          assertTableLayout(layoutContext.editor, alignment);
+          results.push({ name: alignment + ' table alignment and following paragraph' });
+        }
+        var saved = layoutContext.editor.getData();
+        await closeEditor(layoutContext);
+
+        var reopenedContext = await openEditor(saved);
+        assert(!reopenedContext.editor.editing.view.getDomRoot().contains(document.activeElement),
+          'Reopened CKEditor layout must be checked before focus or interaction');
+        assertTableLayout(reopenedContext.editor, 'right');
+        assert(reopenedContext.editor.getData() === saved,
+          'Save/reopen must preserve table data and alignment');
+        results.push({ name: 'table clearing survives save/reopen' });
+        await closeEditor(reopenedContext);
+
+        var ordinaryContext = await openEditor(saved, true);
+        var ordinaryRoot = ordinaryContext.editor.editing.view.getDomRoot();
+        var ordinaryFigure = ordinaryRoot.querySelector('figure.table');
+        assert(!ordinaryRoot.classList.contains('papijo-advanced-text-editor'),
+          'An ordinary H5P HTML editor must not receive the Advanced Text scope');
+        assert(getComputedStyle(ordinaryFigure.nextElementSibling).clear === 'none',
+          'The editor stylesheet must not clear tables in unrelated H5P editors');
+        assert(getComputedStyle(ordinaryFigure).cssFloat === 'right',
+          'An ordinary H5P HTML editor must retain its table float');
+        results.push({ name: 'ordinary H5P HTML editor remains unaffected' });
+        await closeEditor(ordinaryContext);
+
+        assert(results.length === 12, 'Expected 12 table results, got ' + results.length);
         document.getElementById('result').textContent = JSON.stringify({
           status: 'PASS',
           count: results.length,

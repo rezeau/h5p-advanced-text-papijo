@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.5
+
+- Made block content immediately following a table start below left- and right-floated tables in runtime and Edit mode while preserving Left / Center / Right alignment.
+- Applied editor table clearing to the initial H5P field before CKEditor receives focus and after save/reopen, scoped to AdvancedTextPapiJo.
+- Added browser regression coverage for alignment, initial display, save/reopen, and isolation from ordinary H5P HTML editors.
+- Updated the separately installed tooltip editor to 1.1.2 so H5P installs its changed styling and initialization code; the editor dependency remains 1.1.
+
 ## 1.2.3
 
 - Fixed unreadable text in the Dark theme when AdvancedTextPapiJo is embedded inside ColumnPapiJo or InteractiveBookPapiJo.
