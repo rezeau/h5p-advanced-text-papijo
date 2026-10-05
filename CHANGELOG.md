@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.6
+
+- Fixed the missing French translation structure for tooltip images, preventing the editor language switch from English to French from throwing `translation[i] is undefined` when AdvancedTextPapiJo is nested in AccordionPapiJo.
+- Retained French as the only runtime translation; English remains supplied by the canonical semantics. Removed obsolete unsupported runtime translations.
+- Added recursive regression coverage for root and nested semantics translations and the supported language policy.
+- The companion tooltip editor remains 1.1.2; production runtime and editor behavior and dependencies are unchanged.
+
 ## 1.2.5
 
 - Made block content immediately following a table start below left- and right-floated tables in runtime and Edit mode while preserving Left / Center / Right alignment.

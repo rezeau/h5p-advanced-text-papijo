@@ -10,8 +10,12 @@ machine-specific paths.
 Run the Node tests:
 
 ```powershell
-node --test tests/phase1a-editor-widget.test.js tests/integration-stability.test.js tests/sanitizer-source-management.test.js tests/tooltip-layout.test.js
+node --test tests/phase1a-editor-widget.test.js tests/integration-stability.test.js tests/sanitizer-source-management.test.js tests/tooltip-layout.test.js tests/semantics-translation.test.js
 ```
+
+The semantics translation tests enforce the French-only root language directory
+and recursively check French labels and positional coverage of list `field` and
+group `fields` entries against the canonical English semantics.
 
 Check every tracked JavaScript file:
 

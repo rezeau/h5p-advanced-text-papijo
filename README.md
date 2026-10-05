@@ -3,9 +3,20 @@
 An enhanced version of the H5P Advanced Text library, with support for
 author-defined tooltips and additional text presentation features.
 
+Current runtime release: `H5P.AdvancedTextPapiJo 1.2.6`. The companion tooltip
+editor remains `H5PEditor.AdvancedTextPapiJoTooltip 1.1.2`.
+
 Tooltips can be created, edited, and removed directly in the H5P editor.
 Tooltip text supports a restricted set of inline formatting elements: `<em>`,
 `<strong>`, `<sup>`, `<sub>`, `<s>`, and `<br>`.
+
+## Languages
+
+AdvancedTextPapiJo supports English through the canonical strings in
+`semantics.json` and French through `language/fr.json`. The French translation
+must cover every semantics entry, including nested list and group fields.
+The separate tooltip editor retains its English and French `libraryStrings`
+under `editor/language/`.
 
 ## Managed tooltip image development notes
 
