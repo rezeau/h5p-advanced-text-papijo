@@ -165,3 +165,12 @@ Remove-Item Env:PAPIJO_CKEDITOR_ROOT
 
 The default remains the installed CLI build. These are real-build browser tests,
 not a replacement for CMS installation and manual acceptance checks.
+
+Managed replacement coverage extends the same image harness through
+`inline-images-replace-browser.js`. The runner retains all 14 routes and runs
+the image route at actual 1280/160/480px viewports, sending real native-button
+Enter keystrokes. Node adds retained A/B clipboard coverage; PHP adds four
+old/new semantic save/localization/retention/export/reimport cases; live CLI
+adds five replacement-result cases. See the
+[replacement report and manual checklist](INLINE-IMAGES-REPLACE.md) for coverage
+and limits. Historical phase reports remain unchanged.

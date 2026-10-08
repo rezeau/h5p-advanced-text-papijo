@@ -33,9 +33,19 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
     ['h5p-column-papi-jo', 'col-pj', 'ColumnPapiJo', { content: [{ content: child, useSeparator: 'auto' }] }],
     ['h5p-accordion-papi-jo', 'acordion-papijo-001', 'AccordionPapiJo', { panels: [{ title: 'Repeated copy', content: repeated }] }]
   ];
+  // Preserve the established five cases and render five replacement results.
+  // A remains in the semantic store, while the left occurrence uses new B.
+  for (const [route, contentId, type, original] of cases.slice()) {
+    const params = JSON.parse(JSON.stringify(original));
+    const text = type === 'AdvancedTextPapiJo' ? params : type === 'AccordionPapiJo' ? params.panels[0].content.params : params.content[0].content.params;
+    const imageB = text.inlineImages.find(entry => entry.id === '2200ad5e-671e-42e3-835b-93cbcc338fae');
+    text.inlineImages.push({ id: 'live-replacement-B', image: JSON.parse(JSON.stringify(imageB.image)), alt: 'Explicit live replacement description' });
+    text.text = text.text.replace('data-papijo-inline-image-id="97dd2fde-fd7f-46e2-bb2d-7b686993880f"', 'data-papijo-inline-image-id="live-replacement-B"');
+    cases.push([route, contentId, type, params, true]);
+  }
   const browser = await chromium.launch({ channel: process.env.PAPIJO_BROWSER_CHANNEL || 'msedge', headless: true });
   try {
-    for (const [route, contentId, type, params] of cases) {
+    for (const [route, contentId, type, params, replacement] of cases) {
       const page = await browser.newPage();
       try {
         await page.route('**/*', route => ['GET', 'HEAD'].includes(route.request().method()) ? route.continue() : route.abort());
@@ -99,13 +109,14 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
           }
           finally { H5P.getPath = getPath; $root.remove(); }
         }, { contentId, type, params });
-        assert.deepEqual(result.widths, [425, 460]); assert.equal(result.tooltipWidth, 320);
+        assert.deepEqual(result.widths, replacement ? [460, 460] : [425, 460]); assert.equal(result.tooltipWidth, 320);
         assert.ok(result.calls.every(call => call[1] === contentId));
         const childParams = type === 'AdvancedTextPapiJo' ? params : type === 'AccordionPapiJo' ? params.panels[0].content.params : params.content[0].content.params;
-        for (const id of ['97dd2fde-fd7f-46e2-bb2d-7b686993880f', '2200ad5e-671e-42e3-835b-93cbcc338fae']) {
+        for (const id of [replacement ? 'live-replacement-B' : '97dd2fde-fd7f-46e2-bb2d-7b686993880f', '2200ad5e-671e-42e3-835b-93cbcc338fae']) {
           assert.ok(result.calls.some(call => call[0] === childParams.inlineImages.find(entry => entry.id === id).image.path));
         }
-        console.log('LIVE CLI PASS ' + JSON.stringify(result));
+        if (replacement) { assert.ok(childParams.inlineImages.find(entry => entry.id === '97dd2fde-fd7f-46e2-bb2d-7b686993880f'), 'Inactive A must remain retained'); }
+        console.log('LIVE CLI ' + (replacement ? 'REPLACEMENT ' : '') + 'PASS ' + JSON.stringify(result));
       }
       finally { await page.close(); }
     }

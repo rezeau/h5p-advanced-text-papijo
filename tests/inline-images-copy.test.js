@@ -10,6 +10,34 @@ const context = {};
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../shared/advanced-text-papijo-inline-images.js'), 'utf8'), context);
 const managed = context.PapijoManagedInlineImages;
 
+test('replacement clipboard retains unreferenced A and new B through nested and repeated copies', () => {
+  const source = sourceParams();
+  const A = source.inlineImages.find(entry => entry.id === '97dd2fde-fd7f-46e2-bb2d-7b686993880f');
+  const physicalB = source.inlineImages.find(entry => entry.id === '2200ad5e-671e-42e3-835b-93cbcc338fae');
+  const B = { id: 'replacement-copy-B', image: JSON.parse(JSON.stringify(physicalB.image)), alt: 'Explicit replacement description' };
+  const oldA = JSON.stringify(A);
+  source.inlineImages.push(B);
+  source.text = '<p><span class="papijo-inline-image" data-papijo-inline-image-id="' + B.id +
+    '" data-papijo-inline-image-style="alignLeft"></span>' +
+    '<span class="papijo-inline-image" data-papijo-inline-image-id="' + A.id +
+    '" data-papijo-inline-image-style="alignRight"></span></p>';
+  const core = clipboard();
+  core.copy({ library: 'H5P.AdvancedTextPapiJo 1.2', params: source }, 'text-01');
+  for (const destination of ['acordion-papijo-001', 'col-pj', 'interactive-book', 'text-01']) {
+    const pasted = core.paste(destination);
+    assert.equal(pasted.params.text, source.text);
+    for (const id of [A.id, B.id]) {
+      const entry = pasted.params.inlineImages.find(item => item.id === id);
+      assert.ok(managed.validDefinition(entry));
+      assert.ok(fs.existsSync(path.resolve(environment, 'content', destination, entry.image.path)));
+      assert.equal(entry.alt, id === A.id ? A.alt : B.alt);
+    }
+    assert.equal(pasted.params.inlineImages.length, source.inlineImages.length);
+    core.copy(pasted, destination);
+  }
+  assert.equal(JSON.stringify(A), oldA, 'Source A must remain immutable');
+});
+
 test('installed content clipboard preserves per-occurrence presentation through parent and repeated copies', () => {
   const source = sourceParams();
   for (const [id, style] of [

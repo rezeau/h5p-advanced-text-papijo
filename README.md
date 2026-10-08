@@ -35,6 +35,11 @@ keeping managed images inline-only. Presentation belongs to each HTML occurrence
 the managed definition and H5P path resolution remain unchanged. See the
 [Phase 3 development report and manual checklist](tests/INLINE-IMAGES-PHASE3.md).
 
+Managed replacement now uses the same native Insert/Replace provider and H5P
+picker. It creates a retained definition for the replacement, requires fresh
+ALT, and switches only the captured occurrence while preserving wrapping and
+Undo/Redo. See the [replacement report and acceptance checklist](tests/INLINE-IMAGES-REPLACE.md).
+
 Tooltip images are stored in the optional root `tooltipImages` semantic list.
 The annotated span contains only the sanitized tooltip text and, when needed,
 `data-papijo-tooltip-id`; image URLs and markup are never stored in the text

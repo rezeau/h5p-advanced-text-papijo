@@ -9,6 +9,7 @@ const root = path.resolve(__dirname, '..');
 const ckeditorRoot = process.env.PAPIJO_CKEDITOR_ROOT ||
   'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\ckeditor';
 const routes = {
+  '/inline-images-replace-browser.js': path.join(__dirname, 'inline-images-replace-browser.js'),
   '/inline-images-phase3-browser.js': path.join(__dirname, 'inline-images-phase3-browser.js'),
   '/fixture-large.svg': path.join(__dirname, 'fixtures', 'inline-image-large.svg'),
   '/inline-images.html': path.join(__dirname, 'inline-images-harness.html'),

@@ -34,30 +34,35 @@ const paths = ['/inline-images.html', '/', '/phase1b.html', '/phase1c.html',
   try {
     browser = await chromium.launch({ channel: process.env.PAPIJO_BROWSER_CHANNEL || 'msedge', headless: true });
     for (const route of process.argv[3] ? [process.argv[3]] : paths) {
-      const page = await browser.newPage();
-      page.on('request', request => {
-        if (route === '/inline-images.html' && request.resourceType() === 'image' &&
-            request.url().startsWith('https://example.com/')) {
+      for (const width of route === '/inline-images.html' ? [1280, 160, 480] : [1280]) {
+        const page = await browser.newPage({ viewport: { width, height: 900 } });
+        await page.exposeFunction('papijoHarnessPressKey', async (selector, key) => {
+          await page.locator(selector).press(key);
+        });
+        page.on('request', request => {
+          if (route === '/inline-images.html' && request.resourceType() === 'image' &&
+              request.url().startsWith('https://example.com/')) {
+            failed = true;
+            console.error('Unmanaged test image was requested: ' + request.url());
+          }
+        });
+        page.on('pageerror', error => {
           failed = true;
-          console.error('Unmanaged test image was requested: ' + request.url());
+          console.error(route + ' PAGE ERROR: ' + error.message);
+        });
+        try {
+          await page.goto(new URL(route, origin).href);
+          await page.waitForFunction(() => ['pass', 'fail'].includes(document.documentElement.dataset.testStatus), null, { timeout: 60000 });
+          const status = await page.locator('html').getAttribute('data-test-status');
+          if (status !== 'pass') {
+            failed = true;
+            console.error(route + '\n' + await page.locator('#result').innerText());
+          }
+          else { console.log('PASS ' + route + (route === '/inline-images.html' ? ' viewport=' + width : '')); }
         }
-      });
-      page.on('pageerror', error => {
-        failed = true;
-        console.error(route + ' PAGE ERROR: ' + error.message);
-      });
-      try {
-        await page.goto(new URL(route, origin).href);
-        await page.waitForFunction(() => ['pass', 'fail'].includes(document.documentElement.dataset.testStatus), null, { timeout: 60000 });
-        const status = await page.locator('html').getAttribute('data-test-status');
-        if (status !== 'pass') {
-          failed = true;
-          console.error(route + '\n' + await page.locator('#result').innerText());
-        }
-        else { console.log('PASS ' + route); }
+        catch (error) { failed = true; console.error(route + ': ' + error.message); }
+        finally { await page.close(); }
       }
-      catch (error) { failed = true; console.error(route + ': ' + error.message); }
-      finally { await page.close(); }
     }
   }
   finally { if (browser) { await browser.close(); } if (server) { server.kill(); } }

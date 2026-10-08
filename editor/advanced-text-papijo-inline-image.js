@@ -220,16 +220,40 @@
       }, { priority: 'high' });
     });
     var insertion = editor.plugins.get('ImageInsertUI');
+    // Constrain only our image balloon. Native static toolbar layout wraps;
+    // the main toolbar retains CKEditor's normal automatic grouping.
+    function fitImageToolbar() {
+      var toolbar = balloon.visibleView;
+      if (!toolbar || !toolbar.items || !Array.from(toolbar.items).some(function (item) {
+        return item.papijoManagedImageButton;
+      })) { return; }
+      toolbar.maxWidth = 'calc(100vw - 16px)';
+      var rect = toolbar.element.getBoundingClientRect();
+      if (!rect.width || (rect.left >= 8 && rect.right <= window.innerWidth - 8)) { return; }
+      var viewImage = editor.editing.view.document.selection.getSelectedElement();
+      if (!viewImage) { return; }
+      var positions = balloon.view.constructor.generatePositions({ sideOffset: 8 });
+      balloon.updatePosition({
+        target: editor.editing.view.domConverter.mapViewToDom(viewImage),
+        positions: [positions.northArrowSouth, positions.northArrowSouthWest, positions.northArrowSouthEast,
+          positions.southArrowNorth, positions.southArrowNorthWest, positions.southArrowNorthEast,
+          positions.viewportStickyNorth]
+      });
+    }
+    editor.listenTo(editor.ui, 'update', fitImageToolbar, { priority: 'low' });
+    editor.listenTo(balloon, 'change:visibleView', fitImageToolbar, { priority: 'low' });
     var probe = editor.ui.componentFactory.create('undo');
     var ButtonView = probe.constructor;
     probe.destroy();
     function refreshInsertion() {
       var selection = editor.model.document.selection;
-      insertion.isEnabled = !editor.isReadOnly && selection.isCollapsed && !!getStore(widget) &&
-        !!H5PEditor.widgets.image && editor.model.schema.checkChild(selection.getFirstPosition(), modelName);
       var selected = selection.getSelectedElement();
       var store = getStore(widget);
-      if (selected && store && store.getDefinition(selected.getAttribute('inlineImageId'))) {
+      var managedImage = selected && selected.is('element', modelName) && store &&
+        store.getDefinition(selected.getAttribute('inlineImageId'));
+      insertion.isEnabled = !editor.isReadOnly && !!store && !!H5PEditor.widgets.image &&
+        (!!managedImage || (selection.isCollapsed && editor.model.schema.checkChild(selection.getFirstPosition(), modelName)));
+      if (managedImage) {
         alternative.clearForceDisabled('papijo-missing-definition');
       }
       else { alternative.forceDisabled('papijo-missing-definition'); }
@@ -239,7 +263,11 @@
     refreshInsertion();
     function createInsertButton() {
       var button = new ButtonView(editor.locale);
-      button.set({ label: editor.t('Insert image'), icon: imageIcon, withText: false, tooltip: true });
+      button.papijoManagedImageButton = true;
+      button.set({ icon: imageIcon, withText: false, tooltip: true });
+      button.bind('label').to(insertion, 'isImageSelected', function (selected) {
+        return editor.t(selected ? 'Replace image' : 'Insert image');
+      });
       button.bind('isEnabled').to(insertion, 'isEnabled');
       button.on('execute', function () {
         controls(widget);
@@ -279,11 +307,38 @@
     state.$form.prop('hidden', true);
     state.$button.attr('aria-expanded', 'false');
     state.draft = undefined;
-    if (restore && widget.ckeditor && state.selection) {
+    if (restore && widget.ckeditor && state.selection &&
+        (!state.target || validReplacementTarget(widget, state))) {
       widget.ckeditor.model.change(function (writer) { writer.setSelection(state.selection); });
       widget.ckeditor.editing.view.focus();
     }
     state.selection = null;
+    state.target = null;
+    state.editor = null;
+    state.expectedId = null;
+  }
+
+  function validReplacementTarget(widget, state) {
+    var editor = widget.ckeditor;
+    var target = state.target;
+    var store = getStore(widget);
+    return !!(editor && editor === state.editor && editor.state !== 'destroyed' && !editor.isReadOnly &&
+      target && target.is('element', modelName) && target.root.rootName !== '$graveyard' &&
+      editor.model.document.getRoot(target.root.rootName) === target.root && target.root.isAttached() &&
+      target.getAttribute('inlineImageId') === state.expectedId && store && store.getDefinition(state.expectedId));
+  }
+
+  function replace(widget, state, image, alt) {
+    if (!validReplacementTarget(widget, state)) { return null; }
+    var definition = getStore(widget).addDefinition(image, alt);
+    if (!definition) { return null; }
+    // Only this occurrence changes. The post-fixer projects src/alt in the same
+    // batch; retained A/B definitions deliberately live outside text history.
+    state.editor.model.change(function (writer) {
+      writer.setAttribute('inlineImageId', definition.id, state.target);
+      writer.setSelection(state.target, 'on');
+    });
+    return definition;
   }
 
   function controls(widget) {
@@ -314,15 +369,23 @@
     state.$button.on('click' + namespace, function () {
       var editor = widget.ckeditor;
       var selection = editor && editor.model.document.selection;
-      if (!selection || !selection.isCollapsed || editor.isReadOnly ||
-          !editor.model.schema.checkChild(selection.getFirstPosition(), modelName) ||
+      var target = selection && selection.getSelectedElement();
+      var store = getStore(widget);
+      var replacing = target && target.is('element', modelName) && store &&
+        store.getDefinition(target.getAttribute('inlineImageId'));
+      if (!selection || editor.isReadOnly ||
+          (!replacing && (!selection.isCollapsed || !editor.model.schema.checkChild(selection.getFirstPosition(), modelName))) ||
           !getStore(widget) || !H5PEditor.widgets.image) {
         state.$status.text(t('placeInlineImageCursor'));
         return;
       }
       close(widget, false);
       state.selection = editor.model.createSelection(selection);
+      state.editor = editor;
+      state.target = replacing ? target : null;
+      state.expectedId = replacing ? target.getAttribute('inlineImageId') : null;
       state.open = true;
+      $apply.text(t(replacing ? 'applyReplacementImage' : 'applyInlineImage'));
       state.$alt.val('');
       state.$status.text('');
       state.$form.prop('hidden', false);
@@ -333,11 +396,13 @@
         ready: function (callback) { callback(); }
       };
       var imageWidget = new H5PEditor.widgets.image(imageParent, {
-        name: 'image', type: 'image', label: t('insertInlineImage'), optional: true
+        name: 'image', type: 'image', label: t(replacing ? 'replaceInlineImage' : 'insertInlineImage'), optional: true
       }, undefined, function (_field, value) {
         if (!state.open || generation !== state.generation) { return; }
         if (state.draft && value && value.path !== state.draft.path) { state.$alt.val(''); }
-        state.draft = value;
+        // The native widget can reuse/mutate its params object for another file.
+        // Keep a snapshot so the path comparison above clears the previous ALT.
+        state.draft = value ? JSON.parse(JSON.stringify(value)) : value;
       });
       state.imageWidget = imageWidget;
       imageWidget.appendTo(state.$image);
@@ -347,16 +412,21 @@
     state.$form.on('submit' + namespace, function (event) {
       event.preventDefault();
       if (!state.open) { return; }
+      if (state.target && !validReplacementTarget(widget, state)) {
+        state.$status.text(t('replacementTargetUnavailable'));
+        return;
+      }
       if (state.$alt.val().trim() === '') {
         state.$status.text(t('enterImageAltText'));
         return;
       }
-      var definition = insert(widget, state.draft, state.$alt.val(), state.selection);
+      var definition = state.target ? replace(widget, state, state.draft, state.$alt.val()) :
+        insert(widget, state.draft, state.$alt.val(), state.selection);
       if (!definition) {
         state.$status.text(t('chooseManagedInlineImage'));
         return;
       }
-      // insertObject already places the caret after the new image.
+      // Insertion leaves the caret after the image; replacement selects its target.
       close(widget, false);
       widget.ckeditor.editing.view.focus();
       state.$status.text('');
@@ -385,7 +455,7 @@
       config.plugins.push(inline, 'ImageToolbar', 'ImageStyle');
       config.image = Object.assign({}, config.image, {
         styles: { options: ['inline', 'alignLeft', 'alignRight'] },
-        toolbar: ['imageStyle:inline', 'imageStyle:alignLeft', 'imageStyle:alignRight', '|', 'imageTextAlternative'],
+        toolbar: ['imageStyle:inline', 'imageStyle:alignLeft', 'imageStyle:alignRight', '|', 'insertImage', 'imageTextAlternative'],
         insert: Object.assign({}, config.image && config.image.insert, { integrations: ['papijoH5p'] })
       });
       var items = Array.isArray(config.toolbar) ? config.toolbar : config.toolbar.items;

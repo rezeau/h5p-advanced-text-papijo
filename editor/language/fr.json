@@ -2,6 +2,9 @@
   "libraryStrings": {
     "insertInlineImage": "Insérer une image",
     "applyInlineImage": "Insérer l’image",
+    "replaceInlineImage": "Remplacer l’image",
+    "applyReplacementImage": "Remplacer l’image",
+    "replacementTargetUnavailable": "L’image à remplacer n’est plus disponible ou modifiable. Fermez le sélecteur et sélectionnez de nouveau l’image.",
     "inlineImageUnavailable": "Image indisponible",
     "placeInlineImageCursor": "Placez le curseur dans le texte avant d’insérer une image.",
     "chooseManagedInlineImage": "Choisissez une image téléversée avec un chemin géré valide.",

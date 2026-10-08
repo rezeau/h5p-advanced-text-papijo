@@ -2,6 +2,9 @@
   "libraryStrings": {
     "insertInlineImage": "Insert image",
     "applyInlineImage": "Insert image",
+    "replaceInlineImage": "Replace image",
+    "applyReplacementImage": "Replace image",
+    "replacementTargetUnavailable": "The image to replace is no longer available or editable. Close the picker and select the image again.",
     "inlineImageUnavailable": "Image unavailable",
     "placeInlineImageCursor": "Place the cursor in the text before inserting an image.",
     "chooseManagedInlineImage": "Choose an uploaded image with a valid managed path.",

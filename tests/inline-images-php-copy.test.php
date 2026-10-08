@@ -24,6 +24,11 @@ final class InlineCopyStorage {
   public $kept = array();
   public function keepFile($id) { $this->kept[] = $id; }
 }
+final class InlineRetainedFileStorage extends H5PDefaultStorage {
+  public function removeContentFile($file, $contentId) {
+    throw new RuntimeException('Retained semantic image must not be deleted: ' . $file);
+  }
+}
 final class InlineCopyFramework {
   public $exports = 0;
   public function t($message) { return $message; }
@@ -35,7 +40,7 @@ $temporary = sys_get_temp_dir() . '/papijo-inline-copy-' . bin2hex(random_bytes(
 mkdir($temporary);
 try {
   $core = new InlineCopyCore();
-  $core->fs = new H5PDefaultStorage($temporary);
+  $core->fs = new InlineRetainedFileStorage($temporary);
   // Read the expression from the installed core, instead of inventing a test regex.
   preg_match('/relativePathRegExp = \'([^\']+)\'/', file_get_contents($installed . 'h5p-php-library/h5p.classes.php'), $regexp);
   copyCheck(isset($regexp[1]), 'Installed relative-path expression missing');
@@ -135,6 +140,67 @@ try {
     }
   }
   copyCheck($framework->exports === 9, 'All PHP fixture exports must complete');
+  // Replacement uses distinct real files and retains inactive A. Exercise the
+  // old/new semantic file comparison, not only first-save localization.
+  foreach (array('standalone', 'accordion', 'column', 'book') as $container) {
+    $destination++;
+    $oldChild = json_decode(json_encode($source));
+    // A owns a distinct file and is the sole active inline definition initially.
+    $oldChild->inlineImages = array(json_decode(json_encode($source->inlineImages[3])));
+    $oldChild->text = '<p><span class="papijo-inline-image" data-papijo-inline-image-id="' .
+      $oldChild->inlineImages[0]->id . '" data-papijo-inline-image-style="alignLeft"></span></p>';
+    foreach (array_merge($oldChild->inlineImages, $oldChild->tooltipImages) as $entry) {
+      $entry->image->path = '../42/' . $entry->image->path;
+    }
+    $library = array('name' => 'H5P.AdvancedTextPapiJo', 'majorVersion' => 1, 'minorVersion' => 2);
+    $editor->processParameters($destination, $library, $oldChild);
+    $child = json_decode(json_encode($oldChild));
+    $A = $child->inlineImages[0];
+    $physicalB = $source->inlineImages[4];
+    copyCheck($physicalB->image->path !== $A->image->path, 'Replacement requires distinct physical image fixture');
+    $B = (object) array('id' => 'php-replacement-B', 'image' => json_decode(json_encode($physicalB->image)), 'alt' => 'Explicit replacement description');
+    $B->image->path = '../42/' . $B->image->path;
+    $child->inlineImages[] = $B;
+    $child->text = '<p><span class="papijo-inline-image" data-papijo-inline-image-id="php-replacement-B" data-papijo-inline-image-style="alignLeft"></span></p>';
+    $beforeA = hash_file('sha256', $temporary . '/content/' . $destination . '/' . $A->image->path);
+    $wrap = function ($text) use ($container) {
+      $action = (object) array('library' => 'H5P.AdvancedTextPapiJo 1.2', 'params' => $text);
+      if ($container === 'accordion') {
+        return (object) array('panels' => array((object) array('title' => 'Replacement', 'content' => $action)));
+      }
+      $column = (object) array('content' => array((object) array('content' => $action)));
+      if ($container === 'column') { return $column; }
+      if ($container === 'book') {
+        return (object) array('chapters' => array((object) array('library' => 'H5P.ColumnPapiJo 1.20', 'params' => $column)));
+      }
+      return $text;
+    };
+    if ($container === 'accordion') { $library = array('name' => 'H5P.AccordionPapiJo', 'majorVersion' => 1, 'minorVersion' => 1); }
+    if ($container === 'column') { $library = array('name' => 'H5P.ColumnPapiJo', 'majorVersion' => 1, 'minorVersion' => 20); }
+    if ($container === 'book') { $library = array('name' => 'H5P.InteractiveBookPapiJo', 'majorVersion' => 1, 'minorVersion' => 16); }
+    $params = $wrap($child);
+    $editor->processParameters($destination, $library, $params, $library, $wrap($oldChild));
+    copyCheck($B->image->path === $physicalB->image->path, 'Replacement B must localize from foreign content');
+    copyCheck($A == $oldChild->inlineImages[0] && $A->alt === $oldChild->inlineImages[0]->alt, 'Inactive A metadata must remain unchanged');
+    copyCheck(hash_file('sha256', $temporary . '/content/' . $destination . '/' . $A->image->path) === $beforeA, 'Old physical file A must remain intact');
+    copyCheck(is_file($temporary . '/content/' . $destination . '/' . $B->image->path), 'Replacement B file must exist');
+    copyCheck(strpos($child->text, 'data-papijo-inline-image-id="' . $A->id . '"') === false, 'A must be inactive for retention test');
+    $content = array('id' => $destination, 'slug' => 'replacement', 'title' => 'Replacement fixture',
+      'library' => $library, 'embedType' => 'div', 'filtered' => json_encode($params), 'dependencies' => array(), 'metadata' => array());
+    copyCheck($export->createExportFile($content), 'Replacement content export must succeed');
+    $archive = new ZipArchive();
+    copyCheck($archive->open($temporary . '/exports/replacement-' . $destination . '.h5p') === true, 'Replacement export must open');
+    $extracted = $temporary . '/replacement-import-' . $destination;
+    copyCheck($archive->extractTo($extracted), 'Replacement export must extract'); $archive->close();
+    $core->fs->saveContent($extracted . '/content', array('id' => $destination + 300));
+    copyCheck(json_decode(file_get_contents($temporary . '/content/' . ($destination + 300) . '/content.json')) == $params, 'Replacement reimport must preserve complete parameters');
+    foreach (array($A, $B) as $entry) {
+      copyCheck(hash_file('sha256', $temporary . '/content/' . ($destination + 300) . '/' . $entry->image->path) ===
+        hash_file('sha256', $temporary . '/content/' . $destination . '/' . $entry->image->path), 'Both retained A/B files must survive export/reimport');
+    }
+    echo 'PHP REPLACEMENT OLD/NEW SAVE/LOCALIZE/RETAIN/EXPORT/REIMPORT PASS ' . $container . "\n";
+  }
+  copyCheck($framework->exports === 13, 'All original and replacement exports must complete');
 }
 finally {
   // Only this test's unique temporary tree; never a site/content/library directory.

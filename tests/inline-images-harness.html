@@ -53,6 +53,7 @@
   <script src="/advanced-text-papijo-tooltip-runtime.js"></script>
   <script src="/text.js"></script>
   <script src="/inline-images-phase3-browser.js"></script>
+  <script src="/inline-images-replace-browser.js"></script>
 </head>
 <body class="h5peditor">
   <div id="fixture"></div>
@@ -94,9 +95,11 @@
         });
       }
       function apply(ctx, image, alt) {
-        var button = Array.from(ctx.editor.ui.view.toolbar.element.querySelectorAll('button'))
-          .find(function (element) { return element.textContent === 'Insert image'; });
+        var toolbar = ctx.editor.ui.view.toolbar;
+        var view = Array.from(toolbar.items).find(function (item) { return item.label === 'Insert image'; });
+        var button = view && view.element;
         assert(button, 'Native CKEditor toolbar must contain Insert image');
+        if (!toolbar.element.contains(button)) { toolbar._behavior.groupedItemsDropdown.buttonView.element.click(); }
         button.click();
         var state = ctx.widget.inlineImageUi;
         assert(state.imageWidget instanceof H5PEditor.widgets.image, 'Must use normal installed H5P image widget');
@@ -120,7 +123,7 @@
         var balloon = ctx.editor.plugins.get('ContextualBalloon');
         var toolbar = balloon.visibleView;
         assert(toolbar && toolbar.element.querySelector('button[data-cke-tooltip-text="Change image text alternative"]'), 'Native image toolbar must appear');
-        assert(toolbar.items.length === 5, 'Image toolbar must have three styles, separator and alt');
+        assert(toolbar.items.length === 6, 'Image toolbar must have three styles, separator, replace and alt');
         toolbar.element.querySelector('button[data-cke-tooltip-text="Change image text alternative"]').click();
         var form = balloon.visibleView;
         assert(form.element.classList.contains('ck-text-alternative-form'), 'Must use the native alternative text form');
@@ -248,6 +251,9 @@
       try {
         await checkContentCopies();
         await runPapijoInlineImagePhase3({ open: open, close: close, apply: apply, caret: caret,
+          imageModel: imageModel, selectImage: selectImage, altForm: altForm,
+          submitAlt: submitAlt, assert: assert, results: results });
+        await runPapijoInlineImageReplacement({ open: open, close: close, apply: apply, caret: caret,
           imageModel: imageModel, selectImage: selectImage, altForm: altForm,
           submitAlt: submitAlt, assert: assert, results: results });
         var ctx = await open('<p>Before after</p>');
