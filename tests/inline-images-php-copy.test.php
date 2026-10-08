@@ -48,6 +48,13 @@ try {
   }
   $sourceFolder = 'C:/my_first_h5p_environment/content/text-01/';
   $source = json_decode(file_get_contents(__DIR__ . '/fixtures/inline-image-copy-source.json'));
+  // Keep the captured Phase 1/2 fixture intact; exercise Phase 3 on a clone.
+  foreach (array('97dd2fde-fd7f-46e2-bb2d-7b686993880f' => 'alignLeft',
+    '2200ad5e-671e-42e3-835b-93cbcc338fae' => 'alignRight') as $id => $style) {
+    $attribute = 'data-papijo-inline-image-id="' . $id . '"';
+    copyCheck(strpos($source->text, $attribute) !== false, 'Active fixture marker must exist');
+    $source->text = str_replace($attribute, $attribute . ' data-papijo-inline-image-style="' . $style . '"', $source->text);
+  }
   mkdir($temporary . '/content/42/images', 0777, true);
   foreach (array_merge($source->inlineImages, $source->tooltipImages) as $entry) {
     copyCheck(copy($sourceFolder . $entry->image->path, $temporary . '/content/42/' . $entry->image->path), 'Source fixture must exist');
@@ -86,6 +93,8 @@ try {
         }
       }
       copyCheck($child->text === $source->text, 'Save must preserve marker HTML');
+      copyCheck(substr_count($child->text, 'data-papijo-inline-image-style=') === 2,
+        'Both occurrence presentations must survive semantic save');
       // Saving already-local paths must keep the existing files.
       $before = count($storage->kept);
       $editor->processParameters($destination, $library, $params);
@@ -116,6 +125,7 @@ try {
         $secondParent = (object) array('panels' => array((object) array('title' => 'Second copy', 'content' =>
           (object) array('library' => 'H5P.AdvancedTextPapiJo 1.2', 'params' => $secondChild))));
         $editor->processParameters(200, array('name' => 'H5P.AccordionPapiJo', 'majorVersion' => 1, 'minorVersion' => 1), $secondParent);
+        copyCheck($secondChild->text === $source->text, 'Second child copy must preserve occurrence presentations');
         foreach (array_merge($secondChild->inlineImages, $secondChild->tooltipImages) as $entry) {
           copyCheck(strpos($entry->image->path, 'images/') === 0 && is_file($temporary . '/content/200/' . $entry->image->path),
             'Second PHP-backed child copy must own destination-local files');

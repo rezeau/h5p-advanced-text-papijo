@@ -73,3 +73,6 @@
   max-width: 100%;
   height: auto;
 }
+.papijo-advanced-text-editor.papijo-inline-image-floats {
+  display: flow-root;
+}

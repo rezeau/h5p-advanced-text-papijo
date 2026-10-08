@@ -52,6 +52,7 @@
   <script src="/advanced-text-papijo-speech-bubble.js"></script>
   <script src="/advanced-text-papijo-tooltip-runtime.js"></script>
   <script src="/text.js"></script>
+  <script src="/inline-images-phase3-browser.js"></script>
 </head>
 <body class="h5peditor">
   <div id="fixture"></div>
@@ -119,8 +120,8 @@
         var balloon = ctx.editor.plugins.get('ContextualBalloon');
         var toolbar = balloon.visibleView;
         assert(toolbar && toolbar.element.querySelector('button[data-cke-tooltip-text="Change image text alternative"]'), 'Native image toolbar must appear');
-        assert(toolbar.items.length === 1, 'Image toolbar must have exactly the supported alt command');
-        toolbar.element.querySelector('button').click();
+        assert(toolbar.items.length === 5, 'Image toolbar must have three styles, separator and alt');
+        toolbar.element.querySelector('button[data-cke-tooltip-text="Change image text alternative"]').click();
         var form = balloon.visibleView;
         assert(form.element.classList.contains('ck-text-alternative-form'), 'Must use the native alternative text form');
         return form;
@@ -246,6 +247,9 @@
       }
       try {
         await checkContentCopies();
+        await runPapijoInlineImagePhase3({ open: open, close: close, apply: apply, caret: caret,
+          imageModel: imageModel, selectImage: selectImage, altForm: altForm,
+          submitAlt: submitAlt, assert: assert, results: results });
         var ctx = await open('<p>Before after</p>');
         await checkToolbarVisibility(ctx);
         var french = await open('<p>Texte</p>', [], 'fr');

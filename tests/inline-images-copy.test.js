@@ -10,6 +10,31 @@ const context = {};
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../shared/advanced-text-papijo-inline-images.js'), 'utf8'), context);
 const managed = context.PapijoManagedInlineImages;
 
+test('installed content clipboard preserves per-occurrence presentation through parent and repeated copies', () => {
+  const source = sourceParams();
+  for (const [id, style] of [
+    ['97dd2fde-fd7f-46e2-bb2d-7b686993880f', 'alignLeft'],
+    ['2200ad5e-671e-42e3-835b-93cbcc338fae', 'alignRight']
+  ]) {
+    const attribute = 'data-papijo-inline-image-id="' + id + '"';
+    assert.ok(source.text.includes(attribute));
+    source.text = source.text.replace(attribute, attribute + ' data-papijo-inline-image-style="' + style + '"');
+  }
+  const core = clipboard();
+  core.copy({ library: 'H5P.AdvancedTextPapiJo 1.2', params: source }, 'text-01');
+  for (const destination of ['acordion-papijo-001', 'col-pj', 'interactive-book', 'text-01']) {
+    const pasted = core.paste(destination);
+    assert.equal(pasted.params.text, source.text);
+    pasted.params.inlineImages.forEach((entry, index) => {
+      assert.deepEqual(Object.keys(entry), Object.keys(source.inlineImages[index]));
+      assert.equal(entry.id, source.inlineImages[index].id);
+      assert.equal(entry.alt, source.inlineImages[index].alt);
+      assert.ok(managed.validPath(entry.image.path));
+    });
+    core.copy(pasted, destination);
+  }
+});
+
 test('installed H5P content clipboard preserves stores/IDs and produces accepted exact references', () => {
   const source = sourceParams();
   const action = { library: 'H5P.AdvancedTextPapiJo 1.2', params: source, subContentId: 'old-child-id' };

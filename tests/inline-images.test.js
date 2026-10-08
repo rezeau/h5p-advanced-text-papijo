@@ -16,6 +16,19 @@ vm.runInNewContext(read('advanced-text-papijo-inline-image-runtime.js'), context
 const managed = context.PapijoManagedInlineImages;
 const Store = context.H5PEditor.AdvancedTextPapiJoInlineImage.Store;
 
+test('occurrence presentation accepts only the two nondefault styles', () => {
+  assert.equal(managed.normalizeStyle('alignLeft'), 'alignLeft');
+  assert.equal(managed.normalizeStyle('alignRight'), 'alignRight');
+  for (const value of [undefined, null, '', 'inline', 'alignCenter', 'block', 'side',
+    'alignBlockLeft', 'alignBlockRight', ' alignLeft', 'alignLeft ', 'ALIGNLEFT', {}, 1,
+    'alignLeft" style="position:fixed', 'url(javascript:x)']) {
+    assert.equal(managed.normalizeStyle(value), null);
+    assert.equal(managed.styleClass(value), null);
+  }
+  assert.equal(managed.styleClass('alignLeft'), 'papijo-inline-image-wrap-left');
+  assert.equal(managed.styleClass('alignRight'), 'papijo-inline-image-wrap-right');
+});
+
 test('inlineImages is an independent optional semantic list of required id, image, alt', () => {
   const semantics = JSON.parse(read('semantics.json'));
   const inline = semantics.find(field => field.name === 'inlineImages');
@@ -140,8 +153,28 @@ test('resolution calls H5P.getPath with managed path and content ID only', () =>
 });
 
 function fixture(ids) {
+  const classes = () => {
+    const values = new Set();
+    return { add: (...names) => names.forEach(name => values.add(name)),
+      remove: (...names) => names.forEach(name => values.delete(name)),
+      toggle: (name, on) => on ? values.add(name) : values.delete(name),
+      contains: name => values.has(name) };
+  };
+  function node() {
+    return { children: [], get firstChild() { return this.children[0]; },
+      appendChild(child) {
+        if (child.parentNode) { child.parentNode.removeChild(child); }
+        this.children.push(child); child.parentNode = this; return child;
+      },
+      removeChild(child) { this.children.splice(this.children.indexOf(child), 1); child.parentNode = null; },
+      insertBefore(child, next) {
+        if (child.parentNode) { child.parentNode.removeChild(child); }
+        this.children.splice(this.children.indexOf(next), 0, child); child.parentNode = this;
+      } };
+  }
   const images = [];
   const ownerDocument = { createElement(name) {
+    if (name === 'div') { return node(); }
     assert.equal(name, 'img');
     const listeners = {};
     const image = {
@@ -153,13 +186,44 @@ function fixture(ids) {
     images.push(image);
     return image;
   } };
-  const markers = ids.map(id => ({ ownerDocument, getAttribute() { return id; },
+  const markers = ids.map(id => ({ ownerDocument, classList: classes(),
+    getAttribute(name) { return name === managed.attribute ? id : this.style; },
     appendChild(image) { this.image = image; } }));
-  return { markers, images, querySelectorAll(selector) {
+  const root = Object.assign(node(), { ownerDocument, markers, images, classList: classes(), querySelectorAll(selector) {
     assert.equal(selector, 'span.papijo-inline-image[data-papijo-inline-image-id]');
     return markers;
-  }, contains(image) { return markers.some(marker => marker.image === image); } };
+  }, contains(image) { return markers.some(marker => marker.image === image); } });
+  markers.forEach(marker => root.appendChild(marker));
+  return root;
 }
+
+test('runtime presentation is occurrence-local, allowlisted, contained, and reset on destroy', () => {
+  const root = fixture(['shared', 'shared', 'shared']);
+  root.markers[0].style = 'alignLeft';
+  root.markers[1].style = 'alignRight';
+  root.markers[2].style = 'alignCenter';
+  root.markers[2].classList.add('papijo-inline-image-wrap-left');
+  const entries = [definition('shared')];
+  const before = JSON.stringify(entries);
+  context.H5P.getPath = (p, id) => '/content/' + id + '/' + p;
+  const runtime = new context.H5P.AdvancedTextPapiJoInlineImageRuntime(root, 7, entries);
+  assert.equal(runtime.initialize(), 3);
+  assert.ok(root.classList.contains(managed.floatRootClass));
+  assert.equal(root.children.length, 1);
+  assert.equal(root.children[0].className, 'papijo-inline-image-flow');
+  assert.deepEqual(root.children[0].children, root.markers);
+  assert.ok(root.markers[0].classList.contains('papijo-inline-image-wrap-left'));
+  assert.ok(root.markers[1].classList.contains('papijo-inline-image-wrap-right'));
+  assert.ok(!root.markers[2].classList.contains('papijo-inline-image-wrap-left'));
+  assert.equal(JSON.stringify(entries), before);
+  runtime.destroy();
+  assert.ok(!root.classList.contains(managed.floatRootClass));
+  assert.deepEqual(root.children, root.markers, 'Destroy must unwrap content in its original order');
+  assert.ok(!root.markers[0].classList.contains('papijo-inline-image-wrap-left'));
+  root.markers[0].style = undefined; root.markers[1].style = 'side';
+  runtime.initialize();
+  assert.ok(!root.classList.contains(managed.floatRootClass));
+});
 
 test('runtime creates safe responsive image DOM and resizes on load/error', () => {
   const root = fixture(['inline-1']);

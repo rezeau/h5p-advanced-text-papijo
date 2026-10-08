@@ -78,6 +78,15 @@ $validator->validateText($unmanagedInline, $inlineSemantics);
 assertSameValue('<p>Before  after</p>', $unmanagedInline, 'Unmanaged remote image is removed');
 echo "INLINE IMAGE FILTER PASS\n";
 
+// PHP preserves data attributes; the shared editor/runtime enum enforces values.
+foreach (array('alignLeft', 'alignRight', 'unsupported') as $presentation) {
+  $styled = '<p><span class="papijo-inline-image" data-papijo-inline-image-id="inline-1" data-papijo-inline-image-style="' . $presentation . '"></span></p>';
+  $expected = $styled;
+  $validator->validateText($styled, $inlineSemantics);
+  assertSameValue($expected, $styled, 'Occurrence presentation survives PHP filtering: ' . $presentation);
+}
+echo "INLINE IMAGE PRESENTATION FILTER PASS\n";
+
 // Exercise PHP's actual recursive list/group/image dispatch without file writes.
 $fileCore = (object) array('relativePathRegExp' => '/^$never-match/');
 $fileValidator = new H5PContentValidator(new Phase1AFrameworkStub(), $fileCore);

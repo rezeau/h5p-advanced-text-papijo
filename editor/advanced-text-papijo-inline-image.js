@@ -90,22 +90,33 @@
       view: { name: 'span', classes: managed.className, attributes: [managed.attribute] },
       model: function (view, api) {
         var id = view.getAttribute(managed.attribute);
-        return managed.validId(id) ? api.writer.createElement(modelName, projection(id)) : null;
+        if (!managed.validId(id)) { return null; }
+        var attributes = projection(id);
+        var style = managed.normalizeStyle(view.getAttribute(managed.styleAttribute));
+        if (style) { attributes.imageStyle = style; }
+        // The optional attribute must not be required to match old markers.
+        if (view.hasAttribute(managed.styleAttribute)) {
+          api.consumable.consume(view, { attributes: [managed.styleAttribute] });
+        }
+        return api.writer.createElement(modelName, attributes);
       },
       converterPriority: 'high'
     });
     editor.conversion.for('dataDowncast').elementToElement({
-      model: { name: modelName, attributes: ['inlineImageId'] },
+      model: { name: modelName, attributes: ['inlineImageId', 'imageStyle'] },
       view: function (model, api) {
         var attributes = { 'class': managed.className };
         attributes[managed.attribute] = model.getAttribute('inlineImageId');
+        var style = managed.normalizeStyle(model.getAttribute('imageStyle'));
+        if (style) { attributes[managed.styleAttribute] = style; }
         return api.writer.createEmptyElement('span', attributes);
       },
       converterPriority: 'high'
     });
     editor.conversion.for('dataDowncast').add(function (dispatcher) {
       dispatcher.on('attribute', function (event, data, api) {
-        if (data.item.is('element', modelName) && data.attributeKey !== 'inlineImageId') {
+        if (data.item.is('element', modelName) &&
+            data.attributeKey !== 'inlineImageId' && data.attributeKey !== 'imageStyle') {
           // Native src/alt/size handlers expect an img. Consume projections before
           // those handlers run: the data view deliberately contains only a span.
           api.consumable.consume(data.item, event.name);
@@ -135,7 +146,10 @@
             else { writer.setAttribute(key, attributes[key], item); }
             changed = true;
           });
-          ['srcset', 'sizes', 'sources', 'width', 'height', 'resizedWidth', 'imageStyle', 'linkHref'].forEach(function (key) {
+          if (item.hasAttribute('imageStyle') && !managed.normalizeStyle(item.getAttribute('imageStyle'))) {
+            writer.removeAttribute('imageStyle', item); changed = true;
+          }
+          ['srcset', 'sizes', 'sources', 'width', 'height', 'resizedWidth', 'linkHref'].forEach(function (key) {
             if (item.hasAttribute(key)) { writer.removeAttribute(key, item); changed = true; }
           });
         });
@@ -145,6 +159,31 @@
     ['insertImage', 'replaceImageSource'].forEach(function (name) {
       editor.commands.get(name).forceDisabled('papijo-managed-images');
     });
+    var presentation = editor.commands.get('imageStyle');
+    presentation.on('execute', function (event, args) {
+      var options = args[0] || {};
+      // Native UI calls this decorated command. Constrain direct calls as well.
+      if (options.value !== 'inline' && !managed.normalizeStyle(options.value)) {
+        event.stop(); return;
+      }
+      args[0] = Object.assign({}, options, { setImageSizes: false });
+    }, { priority: 'high' });
+    function containEditingFloats() {
+      editor.editing.view.change(function (writer) {
+        Array.from(editor.model.document.getRootNames()).forEach(function (name) {
+          var root = editor.model.document.getRoot(name);
+          var viewRoot = editor.editing.view.document.getRoot(name);
+          if (!viewRoot) { return; }
+          var floating = Array.from(editor.model.createRangeIn(root).getItems()).some(function (item) {
+            return item.is('element', modelName) && !!managed.normalizeStyle(item.getAttribute('imageStyle'));
+          });
+          if (floating) { writer.addClass(managed.floatRootClass, viewRoot); }
+          else { writer.removeClass(managed.floatRootClass, viewRoot); }
+        });
+      });
+    }
+    editor.listenTo(editor.model.document, 'change:data', containEditingFloats);
+    editor.once('ready', containEditingFloats);
     var alternative = editor.commands.get('imageTextAlternative');
     alternative.on('execute', function (event, args) {
       event.stop();
@@ -343,8 +382,12 @@
       var image = ClassicEditor.builtinPlugins.find(function (plugin) { return plugin.pluginName === 'Image'; });
       var inline = image && image.requires.find(function (plugin) { return plugin.pluginName === 'ImageInline'; });
       if (!inline) { throw new Error('AdvancedTextPapiJo requires bundled CKEditor ImageInline'); }
-      config.plugins.push(inline, 'ImageToolbar');
-      config.image = { toolbar: ['imageTextAlternative'], insert: { integrations: ['papijoH5p'] } };
+      config.plugins.push(inline, 'ImageToolbar', 'ImageStyle');
+      config.image = Object.assign({}, config.image, {
+        styles: { options: ['inline', 'alignLeft', 'alignRight'] },
+        toolbar: ['imageStyle:inline', 'imageStyle:alignLeft', 'imageStyle:alignRight', '|', 'imageTextAlternative'],
+        insert: Object.assign({}, config.image && config.image.insert, { integrations: ['papijoH5p'] })
+      });
       var items = Array.isArray(config.toolbar) ? config.toolbar : config.toolbar.items;
       // Grouping removes items from the end. Keep image insertion with the
       // common controls, while allowing later controls to overflow normally.

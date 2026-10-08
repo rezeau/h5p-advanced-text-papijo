@@ -145,3 +145,23 @@ GET/HEAD requests and disposable runtime DOM, with no content saves or uploads.
 Set `PAPIJO_CLI_ORIGIN` to change the origin. The Node suite includes an isolated
 test of the installed CLI's content export/import functions. These checks need
 temporary file renames; the Windows sandbox may require an escalated run.
+
+Phase 3 presentation coverage extends `/inline-images.html` through
+`inline-images-phase3-browser.js`: native localized style controls, exact marker
+conversion, combined alt/style history, repeated-reference isolation, structural
+contexts, clipboard preservation, large-image responsiveness, containment and
+resize lifecycle. See [the Phase 3 report/checklist](INLINE-IMAGES-PHASE3.md).
+PHP filtering and copy/save/export/reimport also exercise styled occurrences;
+the live CLI check verifies styled images and Accordion collapse/reopen.
+
+To run the same harnesses against the installed WordPress CKEditor build without
+changing WordPress:
+
+```powershell
+$env:PAPIJO_CKEDITOR_ROOT = 'C:\wamp64\www\wp-test\wp-content\plugins\h5p\h5p-editor-php-library\ckeditor'
+node tests/run-browser-harnesses.js --local
+Remove-Item Env:PAPIJO_CKEDITOR_ROOT
+```
+
+The default remains the installed CLI build. These are real-build browser tests,
+not a replacement for CMS installation and manual acceptance checks.

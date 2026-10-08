@@ -30,6 +30,11 @@ Alternative text, and managed alt history. See [the Phase 2 report and browser
 checklist](tests/INLINE-IMAGES-PHASE2.md). Storage and runtime resolution remain
 unchanged; the development work is uncommitted.
 
+Phase 3 adds native contextual Inline, Wrap left, and Wrap right controls while
+keeping managed images inline-only. Presentation belongs to each HTML occurrence;
+the managed definition and H5P path resolution remain unchanged. See the
+[Phase 3 development report and manual checklist](tests/INLINE-IMAGES-PHASE3.md).
+
 Tooltip images are stored in the optional root `tooltipImages` semantic list.
 The annotated span contains only the sanitized tooltip text and, when needed,
 `data-papijo-tooltip-id`; image URLs and markup are never stored in the text

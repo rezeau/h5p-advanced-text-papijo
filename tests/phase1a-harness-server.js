@@ -6,7 +6,11 @@ const path = require('node:path');
 const copyFixtures = require('./h5p-inline-image-copy-fixtures');
 
 const root = path.resolve(__dirname, '..');
+const ckeditorRoot = process.env.PAPIJO_CKEDITOR_ROOT ||
+  'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\ckeditor';
 const routes = {
+  '/inline-images-phase3-browser.js': path.join(__dirname, 'inline-images-phase3-browser.js'),
+  '/fixture-large.svg': path.join(__dirname, 'fixtures', 'inline-image-large.svg'),
   '/inline-images.html': path.join(__dirname, 'inline-images-harness.html'),
   '/advanced-text-papijo-inline-images.js': path.join(root, 'advanced-text-papijo-inline-images.js'),
   '/advanced-text-papijo-inline-image.js': path.join(root, 'editor', 'advanced-text-papijo-inline-image.js'),
@@ -26,8 +30,8 @@ const routes = {
   '/r5-runtime-lifecycle.html': path.join(__dirname, 'r5-runtime-lifecycle-harness.html'),
   '/table-sort.html': path.join(__dirname, 'table-sort-ckeditor-harness.html'),
   '/jquery.js': 'C:\\my_first_h5p_environment\\libraries\\h5p-php-library\\js\\jquery.js',
-  '/ckeditor.js': 'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\ckeditor\\ckeditor.js',
-  '/ckeditor-fr.js': 'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\ckeditor\\translations\\fr.js',
+  '/ckeditor.js': path.join(ckeditorRoot, 'ckeditor.js'),
+  '/ckeditor-fr.js': path.join(ckeditorRoot, 'translations', 'fr.js'),
   '/h5peditor-html.js': 'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\scripts\\h5peditor-html.js',
   '/h5peditor-application.css': 'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\styles\\css\\application.css',
   '/advanced-text-papijo-tooltip.js': path.join(
@@ -84,7 +88,8 @@ const server = http.createServer((request, response) => {
 
   const contentType = filePath.endsWith('.html') ? 'text/html' :
     filePath.endsWith('.json') ? 'application/json' :
-      filePath.endsWith('.css') ? 'text/css' : 'text/javascript';
+      filePath.endsWith('.css') ? 'text/css' :
+        filePath.endsWith('.svg') ? 'image/svg+xml' : 'text/javascript';
   response.writeHead(200, { 'Content-Type': contentType + '; charset=utf-8' });
   fs.createReadStream(filePath).pipe(response);
 });

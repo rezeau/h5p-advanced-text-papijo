@@ -10,6 +10,15 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
 (async () => {
   const origin = process.env.PAPIJO_CLI_ORIGIN || 'http://localhost:8080';
   const source = { library: 'H5P.AdvancedTextPapiJo 1.2', params: sourceParams() };
+  for (const [id, style] of [
+    ['97dd2fde-fd7f-46e2-bb2d-7b686993880f', 'alignLeft'],
+    ['2200ad5e-671e-42e3-835b-93cbcc338fae', 'alignRight']
+  ]) {
+    const attribute = 'data-papijo-inline-image-id="' + id + '"';
+    assert.ok(source.params.text.includes(attribute));
+    source.params.text = source.params.text.replace(attribute,
+      attribute + ' data-papijo-inline-image-style="' + style + '"');
+  }
   const core = clipboard(); core.copy(source, 'text-01');
   const accordion = core.paste('acordion-papijo-001');
   const column = core.paste('col-pj');
@@ -38,6 +47,7 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
         // Load this repository's actual runtime only if the page did not need it.
         const root = path.resolve(__dirname, '..');
         if (!await frame.evaluate(() => typeof H5P.AdvancedTextPapiJoInlineImageRuntime === 'function')) {
+          await frame.addStyleTag({ path: path.join(root, 'text.css') });
           for (const file of ['advanced-text-papijo-inline-images.js', 'advanced-text-papijo-tooltip-sanitizer.js',
             'advanced-text-papijo-speech-bubble.js', 'advanced-text-papijo-tooltip-runtime.js',
             'advanced-text-papijo-inline-image-runtime.js', 'text.js']) {
@@ -54,11 +64,37 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
             const images = Array.from($root[0].querySelectorAll('img.papijo-managed-inline-image'));
             if (images.length !== 2) { throw Error('Both managed occurrences must render'); }
             for (const image of images) { await image.decode(); }
+            if (type === 'AccordionPapiJo') {
+              await new Promise(resolve => $root.find('.h5p-panel-content').promise().done(resolve));
+            }
+            const textRoot = images[0].closest('.h5p-advanced-text');
+            const flow = textRoot.querySelector(':scope > .papijo-inline-image-flow');
+            if (!flow || getComputedStyle(flow).display !== 'flow-root') {
+              throw Error('Styled AdvancedText must contain floats inside its generated flow container');
+            }
+            for (const [index, side] of ['left', 'right'].entries()) {
+              const marker = images[index].parentElement;
+              if (!marker.classList.contains('papijo-inline-image-wrap-' + side) ||
+                  getComputedStyle(marker).float !== side) { throw Error('Occurrence must wrap ' + side); }
+              if (textRoot.getBoundingClientRect().bottom < marker.getBoundingClientRect().bottom - 1) {
+                throw Error('AdvancedText height must include the floated marker');
+              }
+            }
+            if (type === 'AccordionPapiJo') {
+              const button = $root.find('.h5p-panel-button')[0]; button.click();
+              await new Promise(resolve => $root.find('.h5p-panel-content').promise().done(resolve));
+              if (getComputedStyle(textRoot).display !== 'none') { throw Error('Containment must not prevent Accordion collapse'); }
+              button.click();
+              await new Promise(resolve => $root.find('.h5p-panel-content').promise().done(resolve));
+              if (textRoot.getBoundingClientRect().bottom < images[1].getBoundingClientRect().bottom - 1) {
+                throw Error('Reopened Accordion must still contain floats');
+              }
+            }
             const trigger = $root[0].querySelector('.papijo-tooltip'); trigger.click();
             const tooltip = $root[0].querySelector('img:not(.papijo-managed-inline-image)');
             if (!tooltip) { throw Error('Tooltip image must render'); } await tooltip.decode();
             const output = { type, contentId, widths: images.map(image => image.naturalWidth),
-              tooltipWidth: tooltip.naturalWidth, calls };
+              tooltipWidth: tooltip.naturalWidth, floatContainment: true, calls };
             trigger.click(); return output;
           }
           finally { H5P.getPath = getPath; $root.remove(); }

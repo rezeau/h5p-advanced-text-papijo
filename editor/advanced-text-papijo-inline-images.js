@@ -6,6 +6,17 @@ var PapijoManagedInlineImages = (function () {
   var attribute = 'data-papijo-inline-image-id';
   var className = 'papijo-inline-image';
 
+  // Presentation belongs to the occurrence. Never interpret author data as CSS.
+  function normalizeStyle(value) {
+    return value === 'alignLeft' || value === 'alignRight' ? value : null;
+  }
+
+  function styleClass(value) {
+    if (value === 'alignLeft') { return 'papijo-inline-image-wrap-left'; }
+    if (value === 'alignRight') { return 'papijo-inline-image-wrap-right'; }
+    return null;
+  }
+
   function validId(id) {
     return typeof id === 'string' && /^[a-z0-9][a-z0-9_-]{0,127}$/i.test(id);
   }
@@ -101,6 +112,10 @@ var PapijoManagedInlineImages = (function () {
   return {
     attribute: attribute,
     className: className,
+    styleAttribute: 'data-papijo-inline-image-style',
+    floatRootClass: 'papijo-inline-image-floats',
+    normalizeStyle: normalizeStyle,
+    styleClass: styleClass,
     createId: createId,
     validId: validId,
     validPath: validPath,
