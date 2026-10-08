@@ -1,0 +1,13 @@
+{
+  "inlineImages": [
+    { "id": "7e5a8a65-00f8-45c9-9aea-25ba863fb59e", "image": { "path": "images/98059c62a715fe41bb293b78fd2439c9.jpg", "mime": "image/jpeg", "copyright": { "license": "U" }, "width": 425, "height": 354 }, "alt": "aaa" },
+    { "id": "7ec3916a-c6b4-482b-a157-b22664e82ee6", "image": { "path": "images/cb5b8cb112fe972fbfeb21a9f3112ca7.jpg", "mime": "image/jpeg", "copyright": { "license": "U" }, "width": 425, "height": 354 }, "alt": "piggy" },
+    { "id": "a2b51672-9c08-4fa3-9417-1f3ad58b8bfd", "image": { "path": "images/bde121d522e93dba9bc7e80efbac0c63.jpg", "mime": "image/jpeg", "copyright": { "license": "U" }, "width": 460, "height": 280 }, "alt": "meuh" },
+    { "id": "97dd2fde-fd7f-46e2-bb2d-7b686993880f", "image": { "path": "images/cb5b8cb112fe972fbfeb21a9f3112ca7.jpg", "mime": "image/jpeg", "copyright": { "license": "U" }, "width": 425, "height": 354 }, "alt": "cochonne" },
+    { "id": "2200ad5e-671e-42e3-835b-93cbcc338fae", "image": { "path": "images/bde121d522e93dba9bc7e80efbac0c63.jpg", "mime": "image/jpeg", "copyright": { "license": "U" }, "width": 460, "height": 280 }, "alt": "les deux vaches" }
+  ],
+  "text": "<p>look at that pig</p><p><span class=\"papijo-inline-image\" data-papijo-inline-image-id=\"97dd2fde-fd7f-46e2-bb2d-7b686993880f\"></span></p><p>and those cows</p><p><span class=\"papijo-inline-image\" data-papijo-inline-image-id=\"2200ad5e-671e-42e3-835b-93cbcc338fae\"></span></p><p>the <span class=\"papijo-tooltip\" data-papijo-tooltip=\"the little cat here\" data-papijo-tooltip-id=\"b7a2dd61-21ab-4dc8-98a0-b866080742ed\">little cat</span> here</p>",
+  "tooltipImages": [
+    { "id": "b7a2dd61-21ab-4dc8-98a0-b866080742ed", "image": { "path": "images/90d25dbc176af53faa20f8c1997ae38e.jpg", "mime": "image/jpeg", "copyright": { "license": "U" }, "width": 320, "height": 391 }, "alt": "---" }
+  ]
+}

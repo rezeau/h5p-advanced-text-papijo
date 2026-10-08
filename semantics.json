@@ -64,5 +64,22 @@
         }
       ]
     }
+  },
+  {
+    "name": "inlineImages",
+    "type": "list",
+    "widget": "advancedTextPapiJoInlineImagesStore",
+    "label": "Inline images",
+    "optional": true,
+    "field": {
+      "name": "inlineImage",
+      "type": "group",
+      "label": "Inline image",
+      "fields": [
+        { "name": "id", "type": "text", "label": "Identifier" },
+        { "name": "image", "type": "image", "label": "Image" },
+        { "name": "alt", "type": "text", "label": "Alternative text" }
+      ]
+    }
   }
 ]

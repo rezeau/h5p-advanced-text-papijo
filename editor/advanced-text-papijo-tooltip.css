@@ -62,3 +62,14 @@
 .papijo-tooltip-authoring-status {
   margin: 0.5em 0 0;
 }
+/* Local inline-image controls and native CKEditor object preview. */
+.papijo-inline-image-controls { margin-top: 0.5em; }
+.papijo-inline-image-form label { display: block; margin: 0.5em 0; }
+.papijo-advanced-text-editor .image-inline {
+  display: inline-block;
+  max-width: 100%;
+}
+.papijo-advanced-text-editor .image-inline img {
+  max-width: 100%;
+  height: auto;
+}

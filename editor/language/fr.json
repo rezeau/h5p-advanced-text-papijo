@@ -1,5 +1,10 @@
 {
   "libraryStrings": {
+    "insertInlineImage": "Insérer une image",
+    "applyInlineImage": "Insérer l’image",
+    "inlineImageUnavailable": "Image indisponible",
+    "placeInlineImageCursor": "Placez le curseur dans le texte avant d’insérer une image.",
+    "chooseManagedInlineImage": "Choisissez une image téléversée avec un chemin géré valide.",
     "createTooltip": "Créer une infobulle",
     "editTooltip": "Modifier l’infobulle",
     "removeTooltip": "Supprimer l’infobulle",

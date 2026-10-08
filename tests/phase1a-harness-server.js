@@ -3,9 +3,15 @@
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
+const copyFixtures = require('./h5p-inline-image-copy-fixtures');
 
 const root = path.resolve(__dirname, '..');
 const routes = {
+  '/inline-images.html': path.join(__dirname, 'inline-images-harness.html'),
+  '/advanced-text-papijo-inline-images.js': path.join(root, 'advanced-text-papijo-inline-images.js'),
+  '/advanced-text-papijo-inline-image.js': path.join(root, 'editor', 'advanced-text-papijo-inline-image.js'),
+  '/advanced-text-papijo-inline-image-runtime.js': path.join(root, 'advanced-text-papijo-inline-image-runtime.js'),
+  '/h5peditor-image.js': 'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\scripts\\h5peditor-image.js',
   '/': path.join(__dirname, 'phase1a-ckeditor-harness.html'),
   '/phase1b.html': path.join(__dirname, 'phase1b-ckeditor-harness.html'),
   '/phase1c.html': path.join(__dirname, 'phase1c-ckeditor-harness.html'),
@@ -21,6 +27,7 @@ const routes = {
   '/table-sort.html': path.join(__dirname, 'table-sort-ckeditor-harness.html'),
   '/jquery.js': 'C:\\my_first_h5p_environment\\libraries\\h5p-php-library\\js\\jquery.js',
   '/ckeditor.js': 'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\ckeditor\\ckeditor.js',
+  '/ckeditor-fr.js': 'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\ckeditor\\translations\\fr.js',
   '/h5peditor-html.js': 'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\scripts\\h5peditor-html.js',
   '/h5peditor-application.css': 'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\styles\\css\\application.css',
   '/advanced-text-papijo-tooltip.js': path.join(
@@ -56,6 +63,17 @@ const routes = {
 };
 
 const server = http.createServer((request, response) => {
+  if (request.url === '/h5p-clipboard.js' || request.url === '/inline-copy-fixture.json') {
+    const json = request.url.endsWith('.json');
+    response.writeHead(200, { 'Content-Type': json ? 'application/json' : 'text/javascript' });
+    response.end(json ? JSON.stringify(copyFixtures.sourceParams()) : copyFixtures.clipboardSource());
+    return;
+  }
+  if (request.url === '/fixture-image.png') {
+    response.writeHead(200, { 'Content-Type': 'image/png' });
+    response.end(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jN1sAAAAASUVORK5CYII=', 'base64'));
+    return;
+  }
   const filePath = routes[request.url];
 
   if (!filePath) {

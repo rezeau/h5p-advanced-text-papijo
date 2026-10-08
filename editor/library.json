@@ -9,6 +9,12 @@
   "author": "Papi Jo",
   "preloadedJs": [
     {
+      "path": "advanced-text-papijo-inline-images.js"
+    },
+    {
+      "path": "advanced-text-papijo-inline-image.js"
+    },
+    {
       "path": "advanced-text-papijo-tooltip-sanitizer.js"
     },
     {

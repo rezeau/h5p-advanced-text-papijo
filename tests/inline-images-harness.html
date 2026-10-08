@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Managed inline image Phase 2 verification</title>
+  <link rel="stylesheet" href="/h5peditor-application.css">
+  <link rel="stylesheet" href="/advanced-text-papijo-tooltip.css">
+  <link rel="stylesheet" href="/text.css">
+  <link rel="stylesheet" href="/advanced-text-papijo-tooltip-runtime.css">
+  <link rel="stylesheet" href="/advanced-text-papijo-speech-bubble.css">
+  <script src="/jquery.js"></script>
+  <script>
+    window.H5PIntegration = { editor: { wysiwygButtons: [] } };
+    window.H5PEditor = {
+      $: H5P.jQuery, widgets: {}, contentId: 17,
+      bindImportantDescriptionEvents: function () {},
+      createFieldMarkup: function (_field, input) {
+        return '<div class="field">' + input + '<div class="h5p-errors"></div></div>';
+      },
+      createImportantDescription: function () { return ''; },
+      createError: function (message) { return '<p>' + message + '</p>'; },
+      getNextFieldId: (function () { var id = 0; return function () { return 'inline-field-' + (++id); }; })(),
+      t: function (_library, key) { return key; }
+    };
+    window.ns = H5PEditor;
+    // Exercise the installed H5P image widget, with its transport/popup services stubbed.
+    H5PEditor.File = function () { this.on = function () {}; };
+    H5PEditor.File.prototype.remove = function () { if (this.$item) { this.$item.remove(); } };
+    H5PEditor.File.addCopyright = function () {};
+    H5PEditor.ImageEditingPopup = function () { this.on = function () {}; };
+    H5P.ConfirmationDialog = function () { this.on = function () {}; };
+    var pathCalls = [];
+    H5P.getPath = function (path, id) { pathCalls.push([path, id]); return '/fixture-image.png'; };
+    H5P.EventDispatcher = function () {
+      this.events = [];
+      this.trigger = function (name) { this.events.push(name); };
+    };
+    H5P.externalDispatcher = { trigger: function () {} };
+  </script>
+  <script src="/h5p-clipboard.js"></script>
+  <script src="/ckeditor.js"></script>
+  <script src="/ckeditor-fr.js"></script>
+  <script src="/h5peditor-html.js"></script>
+  <script src="/h5peditor-image.js"></script>
+  <script src="/advanced-text-papijo-inline-images.js"></script>
+  <script src="/advanced-text-papijo-inline-image.js"></script>
+  <script src="/advanced-text-papijo-tooltip-sanitizer.js"></script>
+  <script src="/advanced-text-papijo-tooltip-selection.js"></script>
+  <script src="/advanced-text-papijo-table-sort.js"></script>
+  <script src="/advanced-text-papijo-tooltip.js"></script>
+  <script src="/advanced-text-papijo-inline-image-runtime.js"></script>
+  <script src="/advanced-text-papijo-speech-bubble.js"></script>
+  <script src="/advanced-text-papijo-tooltip-runtime.js"></script>
+  <script src="/text.js"></script>
+</head>
+<body class="h5peditor">
+  <div id="fixture"></div>
+  <pre id="result">RUNNING</pre>
+  <script>
+    (async function () {
+      var results = [];
+      var definitions = await fetch('/semantics.json').then(function (response) { return response.json(); });
+      var feature = H5PEditor.AdvancedTextPapiJoInlineImage;
+      function assert(condition, message) { if (!condition) { throw Error(message); } }
+      async function open(html, images, language, tooltips) {
+        var params = { text: html, inlineImages: images || [], tooltipImages: tooltips || [] };
+        var parent = { params: params, children: [], library: 'H5P.AdvancedTextPapiJo 1.2' };
+        var store = new feature.Store(parent, definitions[2], params.inlineImages,
+          function (_field, value) { params.inlineImages = value; });
+        var tooltipStore = new H5PEditor.AdvancedTextPapiJoTooltip.TooltipImagesStore(
+          parent, definitions[1], params.tooltipImages, function (_field, value) { params.tooltipImages = value; });
+        parent.children.push(store, tooltipStore);
+        var widget = new H5PEditor.AdvancedTextPapiJoTooltip(parent,
+          JSON.parse(JSON.stringify(definitions[0])), html,
+          function (_field, value) { params.text = value; });
+        parent.children.push(widget);
+        var $shell = H5P.jQuery('<div>').appendTo('#fixture');
+        widget.$item = $shell;
+        widget.$input = H5P.jQuery('<div class="ckeditor">').html(html).appendTo($shell);
+        widget.$errors = H5P.jQuery('<div>').appendTo($shell);
+        var config = widget.getCKEditorConfig();
+        if (language) { config.language = language; }
+        var editor = await ClassicEditor.create(widget.$input[0], config);
+        widget.ckeditor = editor;
+        widget.addTooltipAuthoringControls();
+        feature.controls(widget);
+        return { widget: widget, editor: editor, store: store, params: params, shell: $shell };
+      }
+      async function close(ctx) { ctx.widget.remove(); await ctx.editor.destroy(); ctx.shell.remove(); }
+      function caret(ctx, offset) {
+        ctx.editor.model.change(function (writer) {
+          writer.setSelection(ctx.editor.model.document.getRoot().getChild(0), offset);
+        });
+      }
+      function apply(ctx, image, alt) {
+        var button = Array.from(ctx.editor.ui.view.toolbar.element.querySelectorAll('button'))
+          .find(function (element) { return element.textContent === 'Insert image'; });
+        assert(button, 'Native CKEditor toolbar must contain Insert image');
+        button.click();
+        var state = ctx.widget.inlineImageUi;
+        assert(state.imageWidget instanceof H5PEditor.widgets.image, 'Must use normal installed H5P image widget');
+        state.imageWidget.setValue({ name: 'image' }, image);
+        state.$alt.val(alt);
+        state.$form.trigger('submit');
+      }
+      function imageModel(ctx, index) {
+        return Array.from(ctx.editor.model.createRangeIn(ctx.editor.model.document.getRoot()).getItems())
+          .filter(function (item) { return item.is('element', 'imageInline'); })[index || 0];
+      }
+      async function selectImage(ctx, index) {
+        var image = imageModel(ctx, index);
+        ctx.editor.model.change(function (writer) { writer.setSelection(image, 'on'); });
+        ctx.editor.editing.view.focus();
+        ctx.editor.ui.update();
+        await new Promise(function (resolve) { setTimeout(resolve, 25); });
+        return image;
+      }
+      function altForm(ctx) {
+        var balloon = ctx.editor.plugins.get('ContextualBalloon');
+        var toolbar = balloon.visibleView;
+        assert(toolbar && toolbar.element.querySelector('button[data-cke-tooltip-text="Change image text alternative"]'), 'Native image toolbar must appear');
+        assert(toolbar.items.length === 1, 'Image toolbar must have exactly the supported alt command');
+        toolbar.element.querySelector('button').click();
+        var form = balloon.visibleView;
+        assert(form.element.classList.contains('ck-text-alternative-form'), 'Must use the native alternative text form');
+        return form;
+      }
+      function submitAlt(form, value) {
+        form.labeledInput.fieldView.element.value = value;
+        form.element.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }
+      async function checkToolbarVisibility(ctx) {
+        var editor = ctx.editor;
+        var toolbar = editor.ui.view.toolbar;
+        var button = Array.from(toolbar.items).find(function (view) { return view.label === editor.t('Insert image'); });
+        var config = editor.config.get('toolbar');
+        var items = Array.isArray(config) ? config : config.items;
+        assert(items.indexOf('insertImage') === items.indexOf('underline') + 1 && items.indexOf('insertImage') === 3,
+          'Insert image must immediately follow underline in the effective configuration');
+        assert(button && button.icon && button.element.querySelector('svg.ck-icon path'), 'Insert image must render the CKEditor image SVG');
+        assert(button.withText === false && !button.element.classList.contains('ck-button_with-text'), 'Insert image must be an icon button');
+        assert(button.label === editor.t('Insert image') && button.tooltip === true &&
+          button.element.getAttribute('data-cke-tooltip-text') === editor.t('Insert image') &&
+          button.element.getAttribute('aria-labelledby'), 'Translated image label, tooltip and accessible name must remain');
+        assert(!editor.config.get('toolbar.shouldNotGroupWhenFull') && toolbar.options.shouldGroupWhenFull,
+          'Normal automatic grouping must remain enabled');
+        var originalWidth = ctx.shell[0].style.width;
+        var measurements = [];
+        try {
+          for (var width of [916, 724, 564, 404, 284, 180, 100]) {
+            ctx.shell.css('width', (width + 2) + 'px');
+            await new Promise(function (resolve) { setTimeout(resolve, 50); });
+            var behavior = toolbar._behavior;
+            var visible = Array.from(behavior.ungroupedItems).includes(button);
+            var grouped = Array.from(behavior.groupedItems).includes(button);
+            var rect = button.element.getBoundingClientRect();
+            var toolbarRect = toolbar.element.getBoundingClientRect();
+            assert(Math.abs(toolbarRect.width - width) < 2, 'Harness must constrain actual toolbar width: ' + toolbarRect.width);
+            if (width >= 180) {
+              assert(visible && !grouped && rect.width > 0 && rect.left >= toolbarRect.left && rect.right <= toolbarRect.right,
+                'Image icon must be directly visible at toolbar width ' + width);
+              assert(button.element.closest('.ck-toolbar') === toolbar.element, 'Image button must remain in the main toolbar');
+            }
+            else {
+              assert(!visible && grouped, 'At insufficient width image must participate in normal overflow');
+              assert(behavior.groupedItemsDropdown.element.getBoundingClientRect().width > 0, 'Overflow must remain accessible');
+            }
+            if (width <= 404) {
+              assert(behavior.groupedItems.length > 0, 'Later controls must overflow at narrower widths');
+            }
+            measurements.push({ width: Math.round(toolbarRect.width), imageVisible: visible,
+              overflowItems: behavior.groupedItems.length });
+          }
+        }
+        finally {
+          ctx.shell[0].style.width = originalWidth;
+          await new Promise(function (resolve) { setTimeout(resolve, 50); });
+        }
+        results.push({ toolbarLabel: button.label, toolbarVisibility: measurements });
+      }
+      async function checkContentCopies() {
+        var savedClipboard = localStorage.getItem('h5pClipboard');
+        var savedId = H5PEditor.contentId;
+        try {
+          var source = await fetch('/inline-copy-fixture.json').then(function (response) { return response.json(); });
+          var action = { library: 'H5P.AdvancedTextPapiJo 1.2', params: source, subContentId: 'old-child-id' };
+          var copies = [];
+          for (var destination of ['acordion-papijo-001', 'col-pj']) {
+            H5PEditor.contentId = 'text-01'; H5P.clipboardify(action);
+            H5PEditor.contentId = destination;
+            copies.push({ destination: destination, action: H5P.getClipboard().generic });
+          }
+          H5PEditor.contentId = 'acordion-papijo-001'; H5P.clipboardify(copies[0].action);
+          H5PEditor.contentId = 'col-pj';
+          var childCopy = { destination: 'col-pj', action: H5P.getClipboard().generic };
+          copies.push(childCopy);
+          H5PEditor.contentId = 'col-pj'; H5P.clipboardify(childCopy.action);
+          H5PEditor.contentId = 'interactive-book';
+          copies.push({ destination: 'interactive-book', action: H5P.getClipboard().generic });
+          for (var copy of copies) {
+            var params = copy.action.params;
+            H5PEditor.contentId = copy.destination;
+            assert(!copy.action.subContentId && params.text === source.text, 'Core clipboard must clear child UUID and preserve HTML');
+            var copied = await open(params.text, params.inlineImages, undefined, params.tooltipImages);
+            assert(copied.editor.getData() === source.text, 'Copy must retain exact managed markers');
+            assert(JSON.stringify(copied.params.inlineImages) === JSON.stringify(params.inlineImages), 'All managed definitions must survive');
+            var previews = Array.from(copied.editor.editing.view.getDomRoot().querySelectorAll('.image-inline img'));
+            assert(previews.length === 2, 'Both copied inline occurrences must reconstruct');
+            for (var preview of previews) { await preview.decode(); assert(preview.naturalWidth > 0, 'Copied preview must render'); }
+            for (var entry of params.inlineImages) {
+              assert(source.inlineImages.some(function (original) { return original.id === entry.id && original.alt === entry.alt; }), 'Stable managed IDs and alt must survive');
+            }
+            var original = copied.store.getDefinition(imageModel(copied).getAttribute('inlineImageId'));
+            assert(pathCalls.some(function (call) { return call[0] === original.image.path && call[1] === copy.destination; }), 'Copied preview must pass exact foreign path to getPath');
+            await selectImage(copied); var form = altForm(copied); submitAlt(form, 'Edited copied image');
+            var edited = copied.store.getDefinition(imageModel(copied).getAttribute('inlineImageId'));
+            assert(edited.alt === 'Edited copied image' && edited.image.path === original.image.path, 'Native alt editing must retain the exact foreign reference');
+            assert(copied.widget.validate() && copied.store.validate(), 'Copied content must validate for save');
+            var saved = JSON.parse(JSON.stringify(copied.params));
+            await close(copied);
+            var reopened = await open(saved.text, saved.inlineImages, undefined, saved.tooltipImages);
+            assert(reopened.editor.getData() === saved.text && imageModel(reopened).getAttribute('alt') === 'Edited copied image', 'Copied alt edit must survive save/reopen');
+            await reopened.editor.editing.view.getDomRoot().querySelector('img').decode();
+            assert(JSON.stringify(reopened.params.tooltipImages) === JSON.stringify(params.tooltipImages), 'Inline editing must leave copied tooltip store unchanged');
+            var $root = H5P.jQuery('<div>').appendTo('#fixture');
+            var runtime = new H5P.AdvancedTextPapiJo(saved, copy.destination); runtime.attach($root);
+            var images = Array.from($root[0].querySelectorAll('img.papijo-managed-inline-image'));
+            assert(images.length === 2, 'Copied runtime must reconstruct both occurrences');
+            for (var image of images) { await image.decode(); assert(image.naturalWidth > 0, 'Copied runtime image must render'); }
+            var trigger = $root[0].querySelector('.papijo-tooltip'); trigger.click();
+            var tooltipImage = $root[0].querySelector('img:not(.papijo-managed-inline-image)');
+            assert(tooltipImage, 'Copied tooltip image must still appear'); await tooltipImage.decode();
+            assert(tooltipImage.naturalWidth > 0 && pathCalls.some(function (call) {
+              return call[0] === params.tooltipImages[0].image.path && call[1] === copy.destination;
+            }), 'Copied tooltip must render with unchanged getPath reference');
+            trigger.click(); $root.remove(); await close(reopened);
+            results.push({ copiedContent: copy.destination, path: original.image.path,
+              preview: 'loaded', runtime: 'loaded', tooltip: 'loaded', nativeAltSaveReopen: 'pass' });
+          }
+        }
+        finally {
+          H5PEditor.contentId = savedId;
+          if (savedClipboard === null) { localStorage.removeItem('h5pClipboard'); }
+          else { localStorage.setItem('h5pClipboard', savedClipboard); }
+        }
+      }
+      try {
+        await checkContentCopies();
+        var ctx = await open('<p>Before after</p>');
+        await checkToolbarVisibility(ctx);
+        var french = await open('<p>Texte</p>', [], 'fr');
+        assert(french.editor.t('Insert image') !== 'Insert image', 'Harness must load the installed French CKEditor translation');
+        await checkToolbarVisibility(french);
+        await close(french);
+        caret(ctx, 7);
+        var image = { path: 'images/photo.png#tmp', mime: 'image/png', width: 640, height: 480,
+          copyright: { license: 'U' } };
+        apply(ctx, image, '   ');
+        assert(ctx.store.params.length === 0 && !ctx.editor.getData().includes('papijo-inline-image'), 'Blank alt must block Apply');
+        assert(ctx.widget.inlineImageUi.$status.text() === 'enterImageAltText', 'Required alt error must be visible');
+        var state = ctx.widget.inlineImageUi;
+        state.$alt.val('A photograph'); state.$form.trigger('submit');
+        var id = ctx.store.params[0].id;
+        var expected = '<p>Before <span class="papijo-inline-image" data-papijo-inline-image-id="' + id + '"></span>after</p>';
+        assert(ctx.editor.getData() === expected, 'ID-only serialization mismatch: ' + ctx.editor.getData());
+        assert(ctx.editor.model.document.getRoot().getChild(0).getChild(1).name === 'imageInline', 'Managed occurrence must be an inline model object');
+        var editingImage = ctx.editor.editing.view.getDomRoot().querySelector('.image-inline img');
+        assert(editingImage && editingImage.alt === 'A photograph' && editingImage.parentNode.classList.contains('ck-widget'), 'Native widget preview missing');
+        await editingImage.decode();
+        assert(editingImage.naturalWidth > 0, 'Editor preview must load actual image bytes');
+        assert(pathCalls.some(function (call) { return call[0] === image.path && call[1] === 17; }), 'Editor preview must resolve managed path');
+        assert(ctx.widget.validate() === expected && ctx.params.text === expected, 'H5P editor validation must retain marker');
+        assert(ctx.store.validate() && ctx.store.params[0].image.copyright.license === 'U', 'Store must retain full H5P metadata');
+        ctx.editor.execute('undo');
+        assert(ctx.editor.getData() === '<p>Before after</p>' && ctx.store.params.length === 1, 'Insertion undo must preserve definition');
+        ctx.store.validate();
+        ctx.editor.execute('redo');
+        assert(ctx.editor.getData() === expected, 'Redo must restore occurrence');
+        results.push('normal image widget, required alt, insertion, ID-only serialization, validation, undo/redo');
+        var selected = await selectImage(ctx);
+        assert(selected.name === 'imageInline' && !ctx.editor.plugins.has('ImageBlockEditing') &&
+          !ctx.editor.plugins.has('ImageUpload'), 'Only native inline editing should be active');
+        assert(ctx.editor.config.get('image.insert.integrations').join() === 'papijoH5p' &&
+          !ctx.editor.commands.get('insertImage').isEnabled && !ctx.editor.commands.get('replaceImageSource').isEnabled,
+          'URL and replace commands must be disabled');
+        ctx.editor.execute('imageTextAlternative', { newValue: '   ' });
+        assert(selected.getAttribute('alt') === 'A photograph' && ctx.store.params.length === 1,
+          'Direct alt command must enforce nonblank text');
+        ctx.editor.enableReadOnlyMode('harness');
+        ctx.editor.execute('imageTextAlternative', { newValue: 'Read only mutation' });
+        assert(selected.getAttribute('alt') === 'A photograph' && !ctx.editor.plugins.get('ImageInsertUI').isEnabled,
+          'Read-only editor must block insertion and alt editing');
+        ctx.editor.disableReadOnlyMode('harness');
+        var form = altForm(ctx);
+        assert(form.labeledInput.fieldView.element.value === 'A photograph', 'Native alt form must display managed alt');
+        submitAlt(form, '');
+        assert(ctx.editor.plugins.get('ContextualBalloon').visibleView === form &&
+          form.labeledInput.errorText === 'enterImageAltText' && ctx.store.params.length === 1, 'Blank alt must keep native form open');
+        submitAlt(form, '  \t ');
+        assert(ctx.editor.plugins.get('ContextualBalloon').visibleView === form && ctx.store.params.length === 1,
+          'Whitespace alt must be rejected');
+        form.labeledInput.fieldView.element.value = 'Cancelled';
+        form.cancelButtonView.element.click();
+        assert(selected.getAttribute('alt') === 'A photograph' && ctx.store.params.length === 1, 'Cancel must leave managed alt unchanged');
+        await selectImage(ctx); form = altForm(ctx);
+        submitAlt(form, '  Updated photograph  ');
+        var newId = selected.getAttribute('inlineImageId');
+        assert(newId !== id && ctx.store.params.length === 2 && selected.getAttribute('alt') === 'Updated photograph',
+          'Alt editing must create a new retained managed definition');
+        assert(JSON.stringify(ctx.store.params[0].image) === JSON.stringify(ctx.store.params[1].image) &&
+          ctx.store.params[0].alt === 'A photograph', 'Alt editing must preserve file metadata and old definition');
+        assert(ctx.editor.getData() === expected.replace(id, newId) && !ctx.editor.getData().includes('fixture-image'),
+          'Alt edit must serialize only the new managed reference');
+        ctx.editor.execute('undo');
+        assert(selected.getAttribute('inlineImageId') === id && selected.getAttribute('alt') === 'A photograph' &&
+          ctx.editor.editing.view.getDomRoot().querySelector('img').alt === 'A photograph', 'Undo must restore ID and alt together');
+        ctx.editor.execute('redo');
+        assert(selected.getAttribute('inlineImageId') === newId && selected.getAttribute('alt') === 'Updated photograph', 'Redo must restore new ID and alt');
+        // Use the native editing keystroke pipeline, not an adapter delete command.
+        var countBeforeDelete = ctx.store.params.length;
+        await selectImage(ctx);
+        ['keydown', 'keyup'].forEach(function (type) {
+          ctx.editor.editing.view.getDomRoot().dispatchEvent(new KeyboardEvent(type, { key: 'Delete', keyCode: 46, bubbles: true, cancelable: true }));
+        });
+        assert(!imageModel(ctx) && ctx.store.params.length === countBeforeDelete, 'Native Delete must remove only the occurrence');
+        ctx.editor.execute('undo');
+        await selectImage(ctx);
+        ['keydown', 'keyup'].forEach(function (type) {
+          ctx.editor.editing.view.getDomRoot().dispatchEvent(new KeyboardEvent(type, { key: 'Backspace', keyCode: 8, bubbles: true, cancelable: true }));
+        });
+        assert(!imageModel(ctx) && ctx.store.params.length === countBeforeDelete, 'Native Backspace must preserve definitions');
+        ctx.editor.execute('undo');
+        // Revert alt only for the original Phase 1 fixture below; definitions remain retained.
+        ctx.editor.execute('undo');
+        assert(ctx.editor.getData() === expected, 'History must restore the original marker');
+        results.push('native image toolbar and alt form, validation/cancel, retained copy on edit, atomic undo/redo, native Delete/Backspace');
+        var persisted = JSON.parse(JSON.stringify(ctx.params));
+        persisted.text = expected;
+        persisted.inlineImages = [persisted.inlineImages[0]];
+        await close(ctx);
+        ctx = await open(persisted.text, persisted.inlineImages);
+        assert(ctx.editor.getData() === expected, 'Reopen upcast/downcast must preserve exact reference');
+        assert(ctx.editor.editing.view.getDomRoot().querySelector('img').alt === 'A photograph', 'Reopen must reconstruct preview');
+        caret(ctx, 8);
+        ctx.editor.model.change(function (writer) {
+          ctx.editor.model.insertContent(writer.createText('More '));
+        });
+        assert(ctx.editor.getData().includes('</span>More after'), 'Text after reopened object must remain editable');
+        caret(ctx, 13);
+        apply(ctx, { path: 'images/second.png', mime: 'image/png' }, 'Second photograph');
+        assert(ctx.store.params.length === 2 && ctx.editor.getData().match(/data-papijo-inline-image-id/g).length === 2, 'Multiple inline images missing');
+        results.push('reopen reconstruction, editing after image, multiple images');
+
+        var $runtime = H5P.jQuery('<div>').appendTo('#fixture');
+        var runtime = new H5P.AdvancedTextPapiJo({ text: ctx.editor.getData(), inlineImages: ctx.store.params }, 31);
+        runtime.attach($runtime);
+        assert($runtime.find('img.papijo-managed-inline-image').length === 2, 'Runtime must resolve both images');
+        var domImage = $runtime.find('img')[0];
+        await domImage.decode();
+        assert(domImage.naturalWidth > 0, 'Runtime image must load actual image bytes');
+        var resizeCount = runtime.events.filter(function (name) { return name === 'resize'; }).length;
+        domImage.dispatchEvent(new Event('load')); domImage.dispatchEvent(new Event('error'));
+        assert(runtime.events.filter(function (name) { return name === 'resize'; }).length === resizeCount + 2, 'Runtime must resize on load/error');
+        assert(getComputedStyle(domImage).maxWidth === '100%', 'Runtime responsive class missing');
+        assert(pathCalls.some(function (call) { return call[1] === 31; }), 'Runtime getPath must use content ID');
+        results.push('safe runtime DOM, getPath content ID, responsive CSS, load/error resize');
+        await close(ctx);
+
+        ctx = await open('<p><span class="papijo-inline-image" data-papijo-inline-image-id="' + id + '"></span></p>', persisted.inlineImages);
+        assert(ctx.widget.validate() !== false, 'Managed image-only content must validate');
+        assert(ctx.widget.field.optional === undefined, 'Validation must restore required text semantics');
+        ctx.editor.setData('<p>Unmanaged <img src="https://example.com/remote.png" alt="Remote"> image</p>');
+        assert(!ctx.editor.getData().includes('<img') && !ctx.editor.editing.view.getDomRoot().querySelector('img'), 'Native URL image models must remain disabled');
+        ctx.editor.setData('<p><span class="papijo-inline-image" data-papijo-inline-image-id="missing"></span></p>');
+        assert(ctx.editor.getData().includes('data-papijo-inline-image-id="missing"'), 'Missing reference must survive conservatively');
+        assert(!ctx.editor.editing.view.getDomRoot().querySelector('img').hasAttribute('src'), 'Missing definition must not load a URL');
+        await selectImage(ctx);
+        assert(!ctx.editor.commands.get('imageTextAlternative').isEnabled, 'Missing definitions must disable managed alt editing');
+        results.push('image-only validation, arbitrary image rejection, missing-definition reconstruction');
+        await close(ctx);
+
+        var first = await open(persisted.text, persisted.inlineImages);
+        var second = await open(persisted.text, [{ id: id, image: { path: 'images/other.png' }, alt: 'Other instance' }]);
+        assert(first.editor.editing.view.getDomRoot().querySelector('img').alt === 'A photograph' &&
+          second.editor.editing.view.getDomRoot().querySelector('img').alt === 'Other instance', 'Editor stores must be scoped to their siblings');
+        first.editor.model.change(function (writer) {
+          writer.setSelection(writer.createRange(writer.createPositionAt(first.editor.model.document.getRoot().getChild(0), 0),
+            writer.createPositionAt(first.editor.model.document.getRoot().getChild(0), 6)));
+        });
+        var tooltipStore = first.widget.parent.children[1];
+        tooltipStore.setDefinition('tooltip-image', { path: 'images/tooltip.png' }, 'Tooltip picture');
+        var tooltipResult = first.editor.execute('createPapijoTooltip', { tooltipText: 'Tooltip explanation', tooltipId: 'tooltip-image' });
+        assert(tooltipResult.valid && first.editor.getData().includes('papijo-tooltip') && first.editor.getData().includes('papijo-inline-image'), 'Tooltip coexistence failed');
+        // Repeated references share a file definition until one occurrence's alt changes.
+        var marker = '<span class="papijo-inline-image" data-papijo-inline-image-id="' + id + '"></span>';
+        first.editor.setData('<p>' + marker + ' and ' + marker + '</p>');
+        await selectImage(first, 1);
+        form = altForm(first); submitAlt(form, 'Only second occurrence');
+        assert(imageModel(first).getAttribute('inlineImageId') === id &&
+          imageModel(first, 1).getAttribute('inlineImageId') !== id && imageModel(first).getAttribute('alt') === 'A photograph',
+          'Alt edits must isolate repeated references');
+        var reopened = await open(first.editor.getData(), JSON.parse(JSON.stringify(first.store.params)));
+        assert(imageModel(reopened, 1).getAttribute('alt') === 'Only second occurrence' &&
+          reopened.editor.getData() === first.editor.getData(), 'Save/reopen must retain the edited definition and marker');
+        await close(reopened);
+        // Raw HTML and clipboard images must never enter the native managed model.
+        var forbidden = ['https://example.com/image.png', 'data:image/png;base64,AAAA', 'file:///C:/photo.png'];
+        forbidden.forEach(function (url) {
+          first.editor.setData('<p>Keep<img src="' + url + '" alt="Injected" width="100"></p>');
+          assert(!imageModel(first) && !first.editor.getData().includes('<img'), 'Unmanaged HTML image must be rejected: ' + url);
+        });
+        var pipeline = first.editor.plugins.get('ClipboardPipeline');
+        var paste = { content: first.editor.data.processor.toView('<p>Pasted<img src="https://example.com/paste.png"></p>'), method: 'paste' };
+        pipeline.fire('inputTransformation', paste);
+        assert(!imageModel(first) && !first.editor.getData().includes('<img'), 'Clipboard HTML images must be rejected');
+        first.editor.execute('insertImage', { source: 'https://example.com/command.png' });
+        assert(!imageModel(first), 'Native URL insertion command must not bypass the managed provider');
+        first.editor.model.change(function (writer) {
+          first.editor.model.insertContent(writer.createElement('imageInline', { src: 'https://example.com/model.png', alt: 'Unsafe' }));
+        });
+        assert(!imageModel(first), 'Direct unmanaged model insertion must fail closed');
+        var callsBeforeUnsafe = pathCalls.length;
+        var unsafe = await open('<p>' + marker + '</p>', [{ id: id, image: { path: 'https://example.com/unsafe.png' }, alt: 'Unsafe' }]);
+        assert(!unsafe.editor.editing.view.getDomRoot().querySelector('img').hasAttribute('src') &&
+          pathCalls.length === callsBeforeUnsafe, 'Unsafe definitions must never resolve or load');
+        await close(unsafe);
+        var malformed = await open('<p><span class="papijo-inline-image" data-papijo-inline-image-id="../invalid"></span></p>');
+        assert(!imageModel(malformed), 'Malformed IDs must not upcast as images'); await close(malformed);
+        first.editor.setData('<table><tbody><tr><td><p>' + marker + '</p></td><td><p>Cell</p></td></tr></tbody></table>');
+        await selectImage(first);
+        form = altForm(first); form.cancelButtonView.element.click();
+        var cellParagraph = first.editor.model.document.getRoot().getChild(0).getChild(0).getChild(1).getChild(0);
+        first.editor.model.change(function (writer) { writer.setSelection(cellParagraph, 0); });
+        first.editor.editing.view.focus(); first.editor.ui.update();
+        assert(first.editor.plugins.get('ContextualBalloon').visibleView &&
+          first.editor.plugins.get('ContextualBalloon').visibleView.element.querySelectorAll('button').length > 1,
+          'Table contextual toolbar must coexist with image toolbar');
+        results.push('repeated reference isolation, save/reopen alt edits, remote/data/file and clipboard rejection, unsafe/malformed references, table toolbar coexistence');
+        assert(tooltipStore.getDefinition('tooltip-image').alt === 'Tooltip picture' &&
+          second.store.getDefinition(id).alt === 'Other instance', 'Inline operations must not mutate tooltipImages or sibling stores');
+        results.push('multiple editor instances and tooltipImages coexistence');
+        await close(first); await close(second);
+        document.documentElement.dataset.testStatus = 'pass';
+        document.getElementById('result').textContent = JSON.stringify({ status: 'PASS', results: results }, null, 2);
+      }
+      catch (error) {
+        document.documentElement.dataset.testStatus = 'fail';
+        document.getElementById('result').textContent = JSON.stringify({ status: 'FAIL', error: error.stack, results: results }, null, 2);
+      }
+    })();
+  </script>
+</body>
+</html>

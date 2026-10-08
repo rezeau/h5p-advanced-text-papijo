@@ -20,6 +20,16 @@ under `editor/language/`.
 
 ## Managed tooltip image development notes
 
+Managed inline-image Phase 1 development is documented in
+[the implementation report and manual checklist](tests/INLINE-IMAGES-PHASE1.md).
+It uses an independent optional `inlineImages` semantic store and ID-only span
+markers. Definitions are retained conservatively through deletion and undo.
+
+Phase 2 adds native CKEditor inline-image editing, Insert image, contextual
+Alternative text, and managed alt history. See [the Phase 2 report and browser
+checklist](tests/INLINE-IMAGES-PHASE2.md). Storage and runtime resolution remain
+unchanged; the development work is uncommitted.
+
 Tooltip images are stored in the optional root `tooltipImages` semantic list.
 The annotated span contains only the sanitized tooltip text and, when needed,
 `data-papijo-tooltip-id`; image URLs and markup are never stored in the text

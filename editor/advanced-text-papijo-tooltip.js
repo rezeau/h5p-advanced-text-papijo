@@ -258,6 +258,10 @@
     var self = this;
     var config = H5PEditor.Html.prototype.getCKEditorConfig.call(this);
     var tableSort = H5PEditor.AdvancedTextPapiJoTableSort;
+    var inlineImage = H5PEditor.AdvancedTextPapiJoInlineImage;
+    if (inlineImage) {
+      inlineImage.extendConfig(config);
+    }
     if (config.plugins.indexOf('GeneralHtmlSupport') === -1) {
       config.plugins.push('GeneralHtmlSupport');
     }
@@ -281,6 +285,10 @@
         });
       });
       PapijoTooltipEditing(editor);
+      if (inlineImage) {
+        // Native image schemas/commands are registered by their plugins' init().
+        this.init = function () { inlineImage.install(editor, self); };
+      }
       if (tableSort) {
         tableSort.install(editor);
       }
@@ -294,6 +302,24 @@
     // H5P displays the source field before creating CKEditor on focus.
     this.$input.addClass('papijo-advanced-text-editor');
     this.addTooltipAuthoringControls();
+    if (H5PEditor.AdvancedTextPapiJoInlineImage) {
+      H5PEditor.AdvancedTextPapiJoInlineImage.controls(this);
+    }
+  };
+
+  AdvancedTextPapiJoTooltip.prototype.validate = function () {
+    var inlineImage = H5PEditor.AdvancedTextPapiJoInlineImage;
+    var optional = this.field.optional;
+    // Core Html accepts image-only content only for img tags. Our storage uses spans.
+    if (inlineImage && inlineImage.hasOccurrence(this)) {
+      this.field.optional = true;
+    }
+    try {
+      return H5PEditor.Html.prototype.validate.call(this);
+    }
+    finally {
+      this.field.optional = optional;
+    }
   };
 
   AdvancedTextPapiJoTooltip.prototype.captureModelSelection = function () {
@@ -686,6 +712,9 @@
   };
 
   AdvancedTextPapiJoTooltip.prototype.remove = function () {
+    if (H5PEditor.AdvancedTextPapiJoInlineImage) {
+      H5PEditor.AdvancedTextPapiJoInlineImage.remove(this);
+    }
     this.unbindTooltipSelectionUpdates();
     unbindTooltipAuthoringHandlers(this);
     this.destroyTooltipImageWidget();

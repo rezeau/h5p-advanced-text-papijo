@@ -19,6 +19,17 @@
           }
         ]
       }
+    },
+    {
+      "label": "Images dans le texte",
+      "field": {
+        "label": "Image dans le texte",
+        "fields": [
+          { "label": "Identifiant" },
+          { "label": "Image" },
+          { "label": "Texte alternatif" }
+        ]
+      }
     }
   ]
 }

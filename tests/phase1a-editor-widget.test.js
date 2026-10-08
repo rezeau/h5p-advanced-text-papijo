@@ -293,12 +293,16 @@ test('declares the widget, span tag, dependency, and release versions', () => {
     path: 'advanced-text-papijo-tooltip.css'
   }]);
   assert.deepEqual(library.preloadedJs, [
+    { path: 'advanced-text-papijo-inline-images.js' },
+    { path: 'advanced-text-papijo-inline-image-runtime.js' },
     { path: 'advanced-text-papijo-tooltip-sanitizer.js' },
     { path: 'advanced-text-papijo-speech-bubble.js' },
     { path: 'advanced-text-papijo-tooltip-runtime.js' },
     { path: 'text.js' }
   ]);
   assert.deepEqual(editorLibrary.preloadedJs, [
+    { path: 'advanced-text-papijo-inline-images.js' },
+    { path: 'advanced-text-papijo-inline-image.js' },
     { path: 'advanced-text-papijo-tooltip-sanitizer.js' },
     { path: 'advanced-text-papijo-tooltip-selection.js' },
     { path: 'advanced-text-papijo-table-sort.js' },

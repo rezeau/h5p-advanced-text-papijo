@@ -66,3 +66,41 @@ assertSameValue(
 );
 
 echo "H5P FILTER PASS\n";
+
+// Use the actual AdvancedText field: no arbitrary img tag is permitted.
+$inlineSemantics = json_decode(file_get_contents(__DIR__ . '/../semantics.json'))[0];
+$managedInline = '<p>Before <span class="papijo-inline-image" data-papijo-inline-image-id="inline-1"></span> after</p>';
+$expectedInline = $managedInline;
+$validator->validateText($managedInline, $inlineSemantics);
+assertSameValue($expectedInline, $managedInline, 'Managed inline marker survives actual semantics');
+$unmanagedInline = '<p>Before <img src="https://example.com/image.png" alt="Remote"> after</p>';
+$validator->validateText($unmanagedInline, $inlineSemantics);
+assertSameValue('<p>Before  after</p>', $unmanagedInline, 'Unmanaged remote image is removed');
+echo "INLINE IMAGE FILTER PASS\n";
+
+// Exercise PHP's actual recursive list/group/image dispatch without file writes.
+$fileCore = (object) array('relativePathRegExp' => '/^$never-match/');
+$fileValidator = new H5PContentValidator(new Phase1AFrameworkStub(), $fileCore);
+$inlineStore = array((object) array(
+  'id' => 'inline-1',
+  'image' => (object) array(
+    'path' => 'images/photo.png#tmp', 'mime' => 'image/png', 'width' => 640, 'height' => 480,
+    'unexpected' => 'removed',
+  ),
+  'alt' => 'A photograph',
+));
+$allSemantics = json_decode(file_get_contents(__DIR__ . '/../semantics.json'));
+$revisedDefinition = json_decode(json_encode($inlineStore[0]));
+$revisedDefinition->id = 'inline-alt-revision';
+$revisedDefinition->alt = 'Updated photograph';
+$inlineStore[] = $revisedDefinition;
+$fileValidator->validateList($inlineStore, $allSemantics[2]);
+assertSameValue('inline-1', $inlineStore[0]->id, 'Stable inline ID survives recursive semantic validation');
+assertSameValue('images/photo.png', $inlineStore[0]->image->path, 'Image semantic strips temporary suffix');
+assertSameValue('A photograph', $inlineStore[0]->alt, 'Image alternative text survives semantic validation');
+assertSameValue('image/png', $inlineStore[0]->image->mime, 'Standard H5P image metadata survives');
+assertSameValue('no', isset($inlineStore[0]->image->unexpected) ? 'yes' : 'no', 'Image metadata is filtered by H5P');
+assertSameValue('2', (string) count($inlineStore), 'Both retained alt history definitions survive');
+assertSameValue($inlineStore[0]->image->path, $inlineStore[1]->image->path, 'Retained alt revisions share the same managed file');
+assertSameValue('Updated photograph', $inlineStore[1]->alt, 'Revised alternative text survives');
+echo "INLINE IMAGE SEMANTIC FILE PASS\n";

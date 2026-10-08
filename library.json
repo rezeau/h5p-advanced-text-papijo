@@ -9,6 +9,12 @@
   "author": "Joubel",
   "preloadedJs": [
     {
+      "path": "advanced-text-papijo-inline-images.js"
+    },
+    {
+      "path": "advanced-text-papijo-inline-image-runtime.js"
+    },
+    {
       "path": "advanced-text-papijo-tooltip-sanitizer.js"
     },
     {

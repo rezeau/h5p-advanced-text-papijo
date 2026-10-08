@@ -1,5 +1,10 @@
 {
   "libraryStrings": {
+    "insertInlineImage": "Insert image",
+    "applyInlineImage": "Insert image",
+    "inlineImageUnavailable": "Image unavailable",
+    "placeInlineImageCursor": "Place the cursor in the text before inserting an image.",
+    "chooseManagedInlineImage": "Choose an uploaded image with a valid managed path.",
     "createTooltip": "Create tooltip",
     "editTooltip": "Edit tooltip",
     "removeTooltip": "Remove tooltip",
