@@ -27,7 +27,7 @@ window.runPapijoInlineImagePhase3 = async function (h) {
     var title = ['In line', 'Left aligned image', 'Right aligned image'][index];
     assert(button.label === ctx.editor.t(title) && button.icon && button.tooltip &&
       button.element.querySelector('svg'), 'Native translated style icon/tooltip missing');
-    assert(toolbar.element.querySelectorAll('button').length === 5, 'Contextual toolbar has unexpected commands');
+    assert(toolbar.element.querySelectorAll('button').length === 6, 'Contextual toolbar has unexpected commands');
     button.element.click();
     assert(button.isOn, 'Native active style state missing');
   }

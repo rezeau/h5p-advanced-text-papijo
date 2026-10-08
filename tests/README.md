@@ -166,6 +166,13 @@ Remove-Item Env:PAPIJO_CKEDITOR_ROOT
 The default remains the installed CLI build. These are real-build browser tests,
 not a replacement for CMS installation and manual acceptance checks.
 
+The server also selects `h5peditor-html.js` from the same installed editor root
+as that CKEditor bundle. `/harness-host.json` reports the actual file path and
+SHA-256. WordPress runs therefore use its real automatic external-link setting;
+CLI runs retain its manual new-tab decorator. Legacy assertions compare text
+links by DOM attributes and ignore only WordPress's generated trailing empty
+table guard when checking editor round trips.
+
 Managed replacement coverage extends the same image harness through
 `inline-images-replace-browser.js`. The runner retains all 14 routes and runs
 the image route at actual 1280/160/480px viewports, sending real native-button
@@ -174,3 +181,34 @@ old/new semantic save/localization/retention/export/reimport cases; live CLI
 adds five replacement-result cases. See the
 [replacement report and manual checklist](INLINE-IMAGES-REPLACE.md) for coverage
 and limits. Historical phase reports remain unchanged.
+
+Image Link coverage extends `/inline-images.html` through
+`inline-images-link-browser.js`: native chain/form/actions/Ctrl+K, English/French
+at all three widths, add/edit/unlink and combined history, shared X/Y/unlinked
+occurrences, strict URL boundaries, stale targets, decorator isolation, ordinary
+text links, runtime anchors and native Enter activation. Node adds six focused
+tests; PHP adds four linked save/export/reimport cases; live CLI adds ten linked
+cases. See [the Image Link report and manual checklist](INLINE-IMAGES-LINK.md).
+
+Manual-acceptance regressions additionally use real mouse clicks and native
+focus transitions. They require the same image-toolbar view to remain physically
+visible and hit-testable beside native Link actions/forms, and exercise Save,
+Cancel, Escape, Unlink, image/text transitions and ordinary Link UI. Add Tooltip
+is checked against textual, collapsed, image, mixed and other object selections;
+real text tooltip Add/Edit still passes. The chain helper cannot substitute a
+detached button when the contextual toolbar is missing.
+
+Both PHP checks can also use the installed WordPress core/editor without
+changing the site:
+
+```powershell
+$env:PAPIJO_PHP_ROOT = 'C:\wamp64\www\wp-test\wp-content\plugins\h5p'
+php tests/phase1a-h5p-filter.test.php
+php tests/inline-images-php-copy.test.php
+Remove-Item Env:PAPIJO_PHP_ROOT
+```
+
+The copy test retains the existing CLI content/library fixtures, uses the
+selected actual PHP core/editor methods, and writes only isolated temporary
+storage which it removes afterward. These temporary content exports exercise
+the lifecycle; they are not development-library packages for installation.

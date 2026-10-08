@@ -39,6 +39,9 @@ const paths = ['/inline-images.html', '/', '/phase1b.html', '/phase1c.html',
         await page.exposeFunction('papijoHarnessPressKey', async (selector, key) => {
           await page.locator(selector).press(key);
         });
+        await page.exposeFunction('papijoHarnessClick', async selector => {
+          await page.locator(selector).click();
+        });
         page.on('request', request => {
           if (route === '/inline-images.html' && request.resourceType() === 'image' &&
               request.url().startsWith('https://example.com/')) {

@@ -40,6 +40,12 @@ picker. It creates a retained definition for the replacement, requires fresh
 ALT, and switches only the captured occurrence while preserving wrapping and
 Undo/Redo. See the [replacement report and acceptance checklist](tests/INLINE-IMAGES-REPLACE.md).
 
+Managed image links reuse native CKEditor Link UI with an image-specific chain
+button and Ctrl+K. This first scope permits absolute HTTP/HTTPS URLs only. The
+optional URL belongs to each occurrence, independently of shared definitions,
+ALT and wrapping. Runtime creates a validated semantic anchor around the managed
+image. See the [Image Link report and manual checklist](tests/INLINE-IMAGES-LINK.md).
+
 Tooltip images are stored in the optional root `tooltipImages` semantic list.
 The annotated span contains only the sanitized tooltip text and, when needed,
 `data-papijo-tooltip-id`; image URLs and markup are never stored in the text

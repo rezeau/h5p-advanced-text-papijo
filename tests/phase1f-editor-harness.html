@@ -288,7 +288,7 @@
         const saved = context.widget.validate();
         await closeEditor(context);
         context = await openEditor(saved);
-        assert(context.editor.getData() === saved, 'Formatted tooltip changed on reopen');
+        assert(context.editor.getData() === saved.replace(/<div class="table-overflow-protection"><\/div>$/, ''), 'Formatted tooltip changed on reopen');
         record('formatted save and reopen');
         await closeEditor(context);
 

@@ -76,3 +76,20 @@
 .papijo-advanced-text-editor.papijo-inline-image-floats {
   display: flow-root;
 }
+/* Native Link views, only while editing a managed image occurrence. */
+.papijo-managed-image-link-ui .ck.ck-link-form,
+.papijo-managed-image-link-ui .ck.ck-link-actions {
+  width: calc(100vw - 16px);
+  max-width: 340px;
+  min-width: 0;
+}
+.papijo-managed-image-link-ui .ck.ck-link-form .ck-list {
+  display: none;
+}
+.papijo-managed-image-link-ui .ck.ck-link-form .ck-labeled-field-view,
+.papijo-managed-image-link-ui .ck.ck-link-form .ck-input,
+.papijo-managed-image-link-ui .ck.ck-link-actions .ck-link-actions__preview {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}

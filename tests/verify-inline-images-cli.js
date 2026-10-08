@@ -43,9 +43,18 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
     text.text = text.text.replace('data-papijo-inline-image-id="97dd2fde-fd7f-46e2-bb2d-7b686993880f"', 'data-papijo-inline-image-id="live-replacement-B"');
     cases.push([route, contentId, type, params, true]);
   }
+  // Keep all ten established cases and add linked originals/replacements.
+  for (const [route, contentId, type, original, replacement] of cases.slice()) {
+    const params = JSON.parse(JSON.stringify(original));
+    const text = type === 'AdvancedTextPapiJo' ? params : type === 'AccordionPapiJo' ? params.panels[0].content.params : params.content[0].content.params;
+    text.text = text.text.replace(/data-papijo-inline-image-id="([^"]+)"/g, (attribute, id) =>
+      attribute + ' data-papijo-inline-image-link="' + (id === '2200ad5e-671e-42e3-835b-93cbcc338fae' ?
+        'http://example.com/Y' : 'https://example.com/X?q=1&amp;b=2#details') + '"');
+    cases.push([route, contentId, type, params, replacement, true]);
+  }
   const browser = await chromium.launch({ channel: process.env.PAPIJO_BROWSER_CHANNEL || 'msedge', headless: true });
   try {
-    for (const [route, contentId, type, params, replacement] of cases) {
+    for (const [route, contentId, type, params, replacement, linked] of cases) {
       const page = await browser.newPage();
       try {
         await page.route('**/*', route => ['GET', 'HEAD'].includes(route.request().method()) ? route.continue() : route.abort());
@@ -64,7 +73,7 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
             await frame.addScriptTag({ path: path.join(root, file) });
           }
         }
-        const result = await frame.evaluate(async ({ contentId, type, params }) => {
+        const result = await frame.evaluate(async ({ contentId, type, params, linked }) => {
           const calls = []; const getPath = H5P.getPath;
           H5P.getPath = function (imagePath, id) { calls.push([imagePath, id]); return getPath.apply(this, arguments); };
           const $root = H5P.jQuery('<div>').appendTo(document.body);
@@ -83,11 +92,21 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
               throw Error('Styled AdvancedText must contain floats inside its generated flow container');
             }
             for (const [index, side] of ['left', 'right'].entries()) {
-              const marker = images[index].parentElement;
+              const marker = images[index].closest('.papijo-inline-image');
               if (!marker.classList.contains('papijo-inline-image-wrap-' + side) ||
                   getComputedStyle(marker).float !== side) { throw Error('Occurrence must wrap ' + side); }
               if (textRoot.getBoundingClientRect().bottom < marker.getBoundingClientRect().bottom - 1) {
                 throw Error('AdvancedText height must include the floated marker');
+              }
+            }
+            if (linked) {
+              for (const image of images) {
+                const anchor = image.parentElement;
+                if (!anchor.matches('a.papijo-inline-image-link') ||
+                    anchor.getAttribute('href') !== image.closest('.papijo-inline-image').getAttribute('data-papijo-inline-image-link') ||
+                    Array.from(anchor.attributes).map(attribute => attribute.name).sort().join(',') !== 'class,href' || !image.alt) {
+                  throw Error('Live managed image must have a URL-only semantic link and ALT');
+                }
               }
             }
             if (type === 'AccordionPapiJo') {
@@ -104,11 +123,11 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
             const tooltip = $root[0].querySelector('img:not(.papijo-managed-inline-image)');
             if (!tooltip) { throw Error('Tooltip image must render'); } await tooltip.decode();
             const output = { type, contentId, widths: images.map(image => image.naturalWidth),
-              tooltipWidth: tooltip.naturalWidth, floatContainment: true, calls };
+              tooltipWidth: tooltip.naturalWidth, floatContainment: true, linked: !!linked, calls };
             trigger.click(); return output;
           }
           finally { H5P.getPath = getPath; $root.remove(); }
-        }, { contentId, type, params });
+        }, { contentId, type, params, linked });
         assert.deepEqual(result.widths, replacement ? [460, 460] : [425, 460]); assert.equal(result.tooltipWidth, 320);
         assert.ok(result.calls.every(call => call[1] === contentId));
         const childParams = type === 'AdvancedTextPapiJo' ? params : type === 'AccordionPapiJo' ? params.panels[0].content.params : params.content[0].content.params;
@@ -116,7 +135,7 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
           assert.ok(result.calls.some(call => call[0] === childParams.inlineImages.find(entry => entry.id === id).image.path));
         }
         if (replacement) { assert.ok(childParams.inlineImages.find(entry => entry.id === '97dd2fde-fd7f-46e2-bb2d-7b686993880f'), 'Inactive A must remain retained'); }
-        console.log('LIVE CLI ' + (replacement ? 'REPLACEMENT ' : '') + 'PASS ' + JSON.stringify(result));
+        console.log('LIVE CLI ' + (linked ? 'LINK ' : '') + (replacement ? 'REPLACEMENT ' : '') + 'PASS ' + JSON.stringify(result));
       }
       finally { await page.close(); }
     }

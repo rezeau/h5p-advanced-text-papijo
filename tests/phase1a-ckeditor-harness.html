@@ -116,7 +116,9 @@
           );
           const reopened = reopenedEditor.getData();
 
-          if (reopened !== saved) {
+          // The installed WP Html.validate adds an empty table guard to this
+          // table-capable field. CKEditor drops that generated empty div.
+          if (reopened !== saved.replace(/<div class="table-overflow-protection"><\/div>$/, '')) {
             throw new Error('Save/reopen mismatch at case ' + index + ': ' + reopened);
           }
 

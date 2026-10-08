@@ -1,6 +1,30 @@
 (function (H5P, managed) {
   'use strict';
 
+  // Split surrounding anchors at this occurrence. Adjacent linked text retains
+  // its own anchor/attributes, while the managed image cannot inherit them.
+  function detachFromAnchors(marker, root) {
+    var anchor = marker.parentElement && marker.parentElement.closest('a');
+    while (anchor && root.contains(anchor)) {
+      var range = marker.ownerDocument.createRange();
+      range.setStartAfter(marker);
+      range.setEnd(anchor, anchor.childNodes.length);
+      var tail = range.extractContents();
+      var after = anchor.cloneNode(false);
+      after.appendChild(tail);
+      var branch = marker.parentNode;
+      anchor.parentNode.insertBefore(marker, anchor.nextSibling);
+      while (branch !== anchor && !branch.firstChild) {
+        var parent = branch.parentNode;
+        branch.remove();
+        branch = parent;
+      }
+      if (after.firstChild) { marker.parentNode.insertBefore(after, marker.nextSibling); }
+      if (!anchor.firstChild) { anchor.remove(); }
+      anchor = marker.parentElement && marker.parentElement.closest('a');
+    }
+  }
+
   /** Resolves markers inside a single AdvancedText root; never owns another store. */
   function InlineImageRuntime(root, contentId, definitions, onResize) {
     this.root = root;
@@ -19,6 +43,12 @@
       var definition = managed.lookup(self.definitions,
         marker.getAttribute(managed.attribute));
       var url = managed.resolve(definition, self.contentId, H5P.getPath);
+      var surrounding = marker.parentElement && marker.parentElement.closest('a');
+      var href = managed.normalizeLink(marker.getAttribute(managed.linkAttribute)) ||
+        (surrounding && self.root.contains(surrounding) && managed.normalizeLink(surrounding.getAttribute('href')));
+      detachFromAnchors(marker, self.root);
+      if (href) { marker.setAttribute(managed.linkAttribute, href); }
+      else { marker.removeAttribute(managed.linkAttribute); }
       // Clear untrusted marker children even when the definition is missing.
       marker.textContent = '';
       marker.classList.remove(managed.styleClass('alignLeft'), managed.styleClass('alignRight'));
@@ -42,7 +72,14 @@
       image.addEventListener('error', resize);
       self.records.push({ image: image, marker: marker, resize: resize });
       image.src = url;
-      marker.appendChild(image);
+      if (href) {
+        var anchor = marker.ownerDocument.createElement('a');
+        anchor.className = 'papijo-inline-image-link';
+        anchor.setAttribute('href', href);
+        anchor.appendChild(image);
+        marker.appendChild(anchor);
+      }
+      else { marker.appendChild(image); }
     });
     this.root.classList.toggle(managed.floatRootClass, floating);
     if (floating) {

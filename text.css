@@ -36,6 +36,15 @@
   max-width: 100%;
   height: auto;
 }
+/* Give keyboard focus an image-sized box, also inside floated occurrences. */
+.h5p-advanced-text .papijo-inline-image > .papijo-inline-image-link {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: middle;
+}
+.h5p-advanced-text .papijo-inline-image-link > .papijo-managed-inline-image {
+  display: block;
+}
 /* A local formatting context contains these floats without clearing outside floats. */
 .h5p-advanced-text > .papijo-inline-image-flow {
   display: flow-root;

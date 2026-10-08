@@ -3,12 +3,15 @@
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const copyFixtures = require('./h5p-inline-image-copy-fixtures');
 
 const root = path.resolve(__dirname, '..');
 const ckeditorRoot = process.env.PAPIJO_CKEDITOR_ROOT ||
   'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\ckeditor';
+const editorRoot = path.dirname(ckeditorRoot);
 const routes = {
+  '/inline-images-link-browser.js': path.join(__dirname, 'inline-images-link-browser.js'),
   '/inline-images-replace-browser.js': path.join(__dirname, 'inline-images-replace-browser.js'),
   '/inline-images-phase3-browser.js': path.join(__dirname, 'inline-images-phase3-browser.js'),
   '/fixture-large.svg': path.join(__dirname, 'fixtures', 'inline-image-large.svg'),
@@ -33,7 +36,7 @@ const routes = {
   '/jquery.js': 'C:\\my_first_h5p_environment\\libraries\\h5p-php-library\\js\\jquery.js',
   '/ckeditor.js': path.join(ckeditorRoot, 'ckeditor.js'),
   '/ckeditor-fr.js': path.join(ckeditorRoot, 'translations', 'fr.js'),
-  '/h5peditor-html.js': 'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\scripts\\h5peditor-html.js',
+  '/h5peditor-html.js': path.join(editorRoot, 'scripts', 'h5peditor-html.js'),
   '/h5peditor-application.css': 'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\styles\\css\\application.css',
   '/advanced-text-papijo-tooltip.js': path.join(
     root,
@@ -68,6 +71,13 @@ const routes = {
 };
 
 const server = http.createServer((request, response) => {
+  if (request.url === '/harness-host.json') {
+    const file = routes['/h5peditor-html.js'];
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ ckeditorRoot, htmlWidgetPath: file,
+      htmlWidgetSha256: crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex') }));
+    return;
+  }
   if (request.url === '/h5p-clipboard.js' || request.url === '/inline-copy-fixture.json') {
     const json = request.url.endsWith('.json');
     response.writeHead(200, { 'Content-Type': json ? 'application/json' : 'text/javascript' });

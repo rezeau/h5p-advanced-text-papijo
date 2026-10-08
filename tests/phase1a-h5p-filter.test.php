@@ -2,7 +2,8 @@
 
 declare(strict_types=1);
 
-require_once 'C:\my_first_h5p_environment\libraries\h5p-php-library\h5p.classes.php';
+$installed = rtrim(getenv('PAPIJO_PHP_ROOT') ?: 'C:/my_first_h5p_environment/libraries/', '/\\') . '/';
+require_once $installed . 'h5p-php-library/h5p.classes.php';
 
 final class Phase1AFrameworkStub {
   public function setErrorMessage($message, $code = null): void {}
@@ -86,6 +87,16 @@ foreach (array('alignLeft', 'alignRight', 'unsupported') as $presentation) {
   assertSameValue($expected, $styled, 'Occurrence presentation survives PHP filtering: ' . $presentation);
 }
 echo "INLINE IMAGE PRESENTATION FILTER PASS\n";
+
+// PHP keeps supported occurrence URLs and strips disallowed scheme prefixes.
+// The remaining value must still pass the stricter shared editor/runtime policy.
+foreach (array('https://example.com/details?q=1&amp;b=2#photo', 'http://example.com/photo', 'javascript:x') as $href) {
+  $linked = '<p><span class="papijo-inline-image" data-papijo-inline-image-id="inline-1" data-papijo-inline-image-style="alignLeft" data-papijo-inline-image-link="' . $href . '"></span></p>';
+  $expected = $href === 'javascript:x' ? str_replace('javascript:x', 'x', $linked) : $linked;
+  $validator->validateText($linked, $inlineSemantics);
+  assertSameValue($expected, $linked, 'PHP preserves link data for shared boundary validation');
+}
+echo "INLINE IMAGE LINK FILTER PASS\n";
 
 // Exercise PHP's actual recursive list/group/image dispatch without file writes.
 $fileCore = (object) array('relativePathRegExp' => '/^$never-match/');

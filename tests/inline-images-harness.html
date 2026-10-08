@@ -54,6 +54,7 @@
   <script src="/text.js"></script>
   <script src="/inline-images-phase3-browser.js"></script>
   <script src="/inline-images-replace-browser.js"></script>
+  <script src="/inline-images-link-browser.js"></script>
 </head>
 <body class="h5peditor">
   <div id="fixture"></div>
@@ -123,7 +124,7 @@
         var balloon = ctx.editor.plugins.get('ContextualBalloon');
         var toolbar = balloon.visibleView;
         assert(toolbar && toolbar.element.querySelector('button[data-cke-tooltip-text="Change image text alternative"]'), 'Native image toolbar must appear');
-        assert(toolbar.items.length === 6, 'Image toolbar must have three styles, separator, replace and alt');
+        assert(toolbar.items.length === 7, 'Image toolbar must have three styles, separator, replace, link and alt');
         toolbar.element.querySelector('button[data-cke-tooltip-text="Change image text alternative"]').click();
         var form = balloon.visibleView;
         assert(form.element.classList.contains('ck-text-alternative-form'), 'Must use the native alternative text form');
@@ -223,7 +224,10 @@
             var saved = JSON.parse(JSON.stringify(copied.params));
             await close(copied);
             var reopened = await open(saved.text, saved.inlineImages, undefined, saved.tooltipImages);
-            assert(reopened.editor.getData() === saved.text && imageModel(reopened).getAttribute('alt') === 'Edited copied image', 'Copied alt edit must survive save/reopen');
+            // WordPress's actual Html.validate appends this generated wrapper
+            // whenever the field allows tables, even if there is no table.
+            var expectedReopen = saved.text.replace(/<div class="table-overflow-protection"><\/div>$/, '');
+            assert(reopened.editor.getData() === expectedReopen && imageModel(reopened).getAttribute('alt') === 'Edited copied image', 'Copied alt edit must survive save/reopen');
             await reopened.editor.editing.view.getDomRoot().querySelector('img').decode();
             assert(JSON.stringify(reopened.params.tooltipImages) === JSON.stringify(params.tooltipImages), 'Inline editing must leave copied tooltip store unchanged');
             var $root = H5P.jQuery('<div>').appendTo('#fixture');
@@ -256,6 +260,9 @@
         await runPapijoInlineImageReplacement({ open: open, close: close, apply: apply, caret: caret,
           imageModel: imageModel, selectImage: selectImage, altForm: altForm,
           submitAlt: submitAlt, assert: assert, results: results });
+        await runPapijoInlineImageLinks({ open: open, close: close, apply: apply, caret: caret,
+          imageModel: imageModel, selectImage: selectImage, altForm: altForm,
+          submitAlt: submitAlt, assert: assert, results: results });
         var ctx = await open('<p>Before after</p>');
         await checkToolbarVisibility(ctx);
         var french = await open('<p>Texte</p>', [], 'fr');
@@ -279,7 +286,9 @@
         await editingImage.decode();
         assert(editingImage.naturalWidth > 0, 'Editor preview must load actual image bytes');
         assert(pathCalls.some(function (call) { return call[0] === image.path && call[1] === 17; }), 'Editor preview must resolve managed path');
-        assert(ctx.widget.validate() === expected && ctx.params.text === expected, 'H5P editor validation must retain marker');
+        var validatedImage = ctx.widget.validate();
+        assert(validatedImage.replace(/<div class="table-overflow-protection"><\/div>$/, '') === expected &&
+          ctx.params.text === validatedImage, 'H5P editor validation must retain marker');
         assert(ctx.store.validate() && ctx.store.params[0].image.copyright.license === 'U', 'Store must retain full H5P metadata');
         ctx.editor.execute('undo');
         assert(ctx.editor.getData() === '<p>Before after</p>' && ctx.store.params.length === 1, 'Insertion undo must preserve definition');

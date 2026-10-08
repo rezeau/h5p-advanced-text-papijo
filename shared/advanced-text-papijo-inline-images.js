@@ -6,6 +6,22 @@ var PapijoManagedInlineImages = (function () {
   var attribute = 'data-papijo-inline-image-id';
   var className = 'papijo-inline-image';
 
+  // Links belong to occurrences, independently of managed file definitions.
+  // Validate again after DOM parsing; never decode/repair an unsupported scheme.
+  function normalizeLink(value) {
+    if (typeof value !== 'string' || /[\u0000-\u001f\u007f-\u009f]/.test(value)) { return null; }
+    value = value.trim();
+    if (!/^https?:\/\/[^/?#]/i.test(value) || /[\s\\<>"'`\ufffd]/.test(value) ||
+        /%(?![0-9a-f]{2})/i.test(value)) { return null; }
+    var authority = value.split(/[/?#]/)[2];
+    if (!authority || /@|:$/.test(authority)) { return null; }
+    try {
+      var url = new URL(value);
+      return /^(http|https):$/.test(url.protocol) && url.hostname && !url.username && !url.password ? url.href : null;
+    }
+    catch (error) { return null; }
+  }
+
   // Presentation belongs to the occurrence. Never interpret author data as CSS.
   function normalizeStyle(value) {
     return value === 'alignLeft' || value === 'alignRight' ? value : null;
@@ -113,8 +129,10 @@ var PapijoManagedInlineImages = (function () {
     attribute: attribute,
     className: className,
     styleAttribute: 'data-papijo-inline-image-style',
+    linkAttribute: 'data-papijo-inline-image-link',
     floatRootClass: 'papijo-inline-image-floats',
     normalizeStyle: normalizeStyle,
+    normalizeLink: normalizeLink,
     styleClass: styleClass,
     createId: createId,
     validId: validId,

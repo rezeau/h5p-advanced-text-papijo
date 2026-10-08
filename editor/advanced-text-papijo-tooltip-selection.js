@@ -240,6 +240,17 @@
     }
 
     var range = structure.range;
+    var items = Array.from(range.getItems());
+    // An inline object also makes a non-collapsed range in one text block.
+    // Tooltip creation requires actual text and must never annotate a widget.
+    if (!items.some(function (item) { return item.is('$textProxy') && item.data.trim() !== ''; }) ||
+        items.some(function (item) { return editor.model.schema.isObject(item); })) {
+      return {
+        valid: false,
+        reason: 'nonTextSelection',
+        messageKey: 'selectTextBeforeCreating'
+      };
+    }
     var attributeName = getTooltipModelAttributeName(editor);
     var tooltipState = detectExistingTooltip(editor, selection);
     if (tooltipState.kind !== 'ordinary') {

@@ -1,5 +1,8 @@
 {
   "libraryStrings": {
+    "linkInlineImage": "Link image",
+    "enterValidImageLink": "Enter an absolute HTTP or HTTPS URL without credentials.",
+    "imageLinkTargetUnavailable": "The selected image is no longer available or editable. Close the link form and select the image again.",
     "insertInlineImage": "Insert image",
     "applyInlineImage": "Insert image",
     "replaceInlineImage": "Replace image",

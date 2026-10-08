@@ -187,7 +187,9 @@ function fixture(ids) {
     return image;
   } };
   const markers = ids.map(id => ({ ownerDocument, classList: classes(),
-    getAttribute(name) { return name === managed.attribute ? id : this.style; },
+    getAttribute(name) { return name === managed.attribute ? id : name === managed.styleAttribute ? this.style : this.link || null; },
+    setAttribute(name, value) { assert.equal(name, managed.linkAttribute); this.link = value; },
+    removeAttribute(name) { assert.equal(name, managed.linkAttribute); this.link = undefined; },
     appendChild(image) { this.image = image; } }));
   const root = Object.assign(node(), { ownerDocument, markers, images, classList: classes(), querySelectorAll(selector) {
     assert.equal(selector, 'span.papijo-inline-image[data-papijo-inline-image-id]');

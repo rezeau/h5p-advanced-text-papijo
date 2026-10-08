@@ -66,10 +66,10 @@
       close(widget, false);
       if (widget.inlineImageUi) { widget.inlineImageUi.$button.prop('hidden', false); }
     });
-    editor.model.schema.extend(modelName, { allowAttributes: ['inlineImageId'] });
-    editor.model.schema.addAttributeCheck(function (context, attribute) {
-      if (context.endsWith(modelName) && attribute === 'linkHref') { return false; }
-    });
+    editor.model.schema.extend(modelName, { allowAttributes: ['inlineImageId', 'linkHref'] });
+    // Native surrounding-anchor upcast can run after the marker converter.
+    // Carry its canonical choice to the first attached post-fix, not persistence.
+    var importedLinks = new WeakMap();
     function projection(id) {
       var store = getStore(widget);
       var definition = store && store.getDefinition(id);
@@ -92,23 +92,35 @@
         var id = view.getAttribute(managed.attribute);
         if (!managed.validId(id)) { return null; }
         var attributes = projection(id);
+        var href = managed.normalizeLink(view.getAttribute(managed.linkAttribute));
+        var ancestor = view.parent;
+        while (ancestor && !ancestor.is('element', 'a')) { ancestor = ancestor.parent; }
+        href = href || (ancestor && managed.normalizeLink(ancestor.getAttribute('href')));
+        if (href) { attributes.linkHref = href; }
+        if (view.hasAttribute(managed.linkAttribute)) {
+          api.consumable.consume(view, { attributes: [managed.linkAttribute] });
+        }
         var style = managed.normalizeStyle(view.getAttribute(managed.styleAttribute));
         if (style) { attributes.imageStyle = style; }
         // The optional attribute must not be required to match old markers.
         if (view.hasAttribute(managed.styleAttribute)) {
           api.consumable.consume(view, { attributes: [managed.styleAttribute] });
         }
-        return api.writer.createElement(modelName, attributes);
+        var image = api.writer.createElement(modelName, attributes);
+        importedLinks.set(image, href || null);
+        return image;
       },
       converterPriority: 'high'
     });
     editor.conversion.for('dataDowncast').elementToElement({
-      model: { name: modelName, attributes: ['inlineImageId', 'imageStyle'] },
+      model: { name: modelName, attributes: ['inlineImageId', 'imageStyle', 'linkHref'] },
       view: function (model, api) {
         var attributes = { 'class': managed.className };
         attributes[managed.attribute] = model.getAttribute('inlineImageId');
         var style = managed.normalizeStyle(model.getAttribute('imageStyle'));
         if (style) { attributes[managed.styleAttribute] = style; }
+        var href = managed.normalizeLink(model.getAttribute('linkHref'));
+        if (href) { attributes[managed.linkAttribute] = href; }
         return api.writer.createEmptyElement('span', attributes);
       },
       converterPriority: 'high'
@@ -116,13 +128,30 @@
     editor.conversion.for('dataDowncast').add(function (dispatcher) {
       dispatcher.on('attribute', function (event, data, api) {
         if (data.item.is('element', modelName) &&
-            data.attributeKey !== 'inlineImageId' && data.attributeKey !== 'imageStyle') {
+            data.attributeKey !== 'inlineImageId' && data.attributeKey !== 'imageStyle' && data.attributeKey !== 'linkHref') {
           // Native src/alt/size handlers expect an img. Consume projections before
           // those handlers run: the data view deliberately contains only a span.
           api.consumable.consume(data.item, event.name);
           event.stop();
         }
       }, { priority: 'highest' });
+      dispatcher.on('attribute:linkHref:' + modelName, function (event, data, api) {
+        // Element reconversion above owns the marker URL. Suppress native a and
+        // automatic decorators even though Link remains native in the editor.
+        api.consumable.consume(data.item, event.name);
+        event.stop();
+      }, { priority: 'highest' });
+    });
+    editor.conversion.for('editingDowncast').attributeToElement({
+      model: { name: modelName, key: 'linkHref' },
+      view: function (value, api) {
+        var href = managed.normalizeLink(value);
+        if (!href) { return null; }
+        var anchor = api.writer.createAttributeElement('a', { href: href }, { priority: 5 });
+        api.writer.setCustomProperty('link', true, anchor);
+        return anchor;
+      },
+      converterPriority: 'highest'
     });
     editor.conversion.for('editingDowncast').add(function (dispatcher) {
       dispatcher.on('attribute:inlineImageId:' + modelName, function (event, data, api) {
@@ -139,6 +168,19 @@
           if (!item.is('element', modelName)) { return; }
           var id = item.getAttribute('inlineImageId');
           if (!managed.validId(id)) { writer.remove(item); changed = true; return; }
+          var href = managed.normalizeLink(importedLinks.has(item) ? importedLinks.get(item) : item.getAttribute('linkHref'));
+          importedLinks.delete(item);
+          if ((href && href !== item.getAttribute('linkHref')) || (!href && item.hasAttribute('linkHref'))) {
+            if (href) { writer.setAttribute('linkHref', href, item); }
+            else { writer.removeAttribute('linkHref', item); }
+            changed = true;
+          }
+          // Decorators/GHS anchor attributes must never become image state.
+          Array.from(item.getAttributeKeys()).forEach(function (key) {
+            if ((/^link/.test(key) && key !== 'linkHref') || key === 'htmlA') {
+              writer.removeAttribute(key, item); changed = true;
+            }
+          });
           var attributes = projection(id);
           ['src', 'alt'].forEach(function (key) {
             if (item.getAttribute(key) === attributes[key]) { return; }
@@ -149,7 +191,7 @@
           if (item.hasAttribute('imageStyle') && !managed.normalizeStyle(item.getAttribute('imageStyle'))) {
             writer.removeAttribute('imageStyle', item); changed = true;
           }
-          ['srcset', 'sizes', 'sources', 'width', 'height', 'resizedWidth', 'linkHref'].forEach(function (key) {
+          ['srcset', 'sizes', 'sources', 'width', 'height', 'resizedWidth'].forEach(function (key) {
             if (item.hasAttribute(key)) { writer.removeAttribute(key, item); changed = true; }
           });
         });
@@ -201,6 +243,121 @@
       });
     }, { priority: 'high' });
     var balloon = editor.plugins.get('ContextualBalloon');
+    var linkUi = editor.plugins.get('LinkUI');
+    var linkCommand = editor.commands.get('link');
+    var linkSessions = new WeakMap();
+    var adaptedLinks = new WeakSet();
+    function selectedImage() {
+      var image = editor.model.document.selection.getSelectedElement();
+      return image && image.is('element', modelName) ? image : null;
+    }
+    function editableImage(image) {
+      var store = getStore(widget);
+      return !editor.isReadOnly && image && image.root.rootName !== '$graveyard' && image.root.isAttached() &&
+        editor.model.document.getRoot(image.root.rootName) === image.root && store &&
+        store.getDefinition(image.getAttribute('inlineImageId'));
+    }
+    linkCommand.on('execute', function (event, args) {
+      var image = selectedImage();
+      if (!image) { return; } // Preserve the host's ordinary text-link behavior.
+      var href = managed.normalizeLink(args[0]);
+      if (!editableImage(image) || !href) { event.stop(); return; }
+      args[0] = href;
+      args[1] = {}; // No manual image decorators; the post-fixer strips old ones.
+    }, { priority: 'high' });
+    function refreshLinkAvailability() {
+      var image = selectedImage();
+      ['link', 'unlink'].forEach(function (name) {
+        var command = editor.commands.get(name);
+        if (image && !editableImage(image)) { command.forceDisabled('papijo-image-link'); }
+        else { command.clearForceDisabled('papijo-image-link'); }
+      });
+    }
+    editor.listenTo(editor.model.document, 'change', refreshLinkAvailability);
+    editor.listenTo(editor, 'change:isReadOnly', refreshLinkAvailability);
+    refreshLinkAvailability();
+    editor.ui.componentFactory.add('papijoLinkImage', function () {
+      var button = editor.ui.componentFactory.create('link');
+      button.set({ label: t('linkInlineImage'), tooltip: true });
+      return button;
+    });
+    var closingLinkForm = false;
+    function closeStaleLinkForm() {
+      var session = linkUi.formView && linkSessions.get(linkUi.formView);
+      var current = selectedImage();
+      if (closingLinkForm || !session || !balloon.visibleView ||
+          (balloon.visibleView !== linkUi.formView && balloon.visibleView !== linkUi.actionsView) ||
+          (current === session.target && editableImage(current) && current.getAttribute('inlineImageId') === session.id)) { return; }
+      // Close through native Escape before UI positioning sees a deleted fake
+      // selection marker. Do not replace private LinkUI methods or redirect save.
+      closingLinkForm = true;
+      try {
+        editor.keystrokes.press({ keyCode: 27, preventDefault: function () {}, stopPropagation: function () {} });
+      }
+      finally { closingLinkForm = false; }
+    }
+    editor.listenTo(editor.model.document, 'change', closeStaleLinkForm, { priority: 'highest' });
+    editor.listenTo(editor, 'change:isReadOnly', closeStaleLinkForm, { priority: 'highest' });
+    balloon.on('change:visibleView', function () {
+      var view = balloon.visibleView;
+      var image = selectedImage();
+      var linkView = view && (view === linkUi.formView || view === linkUi.actionsView);
+      var managedLink = linkView && !!editableImage(image);
+      // BalloonPanelView.class is a public native template binding. Extending a
+      // rendered form template is forbidden; DOM-only classes are overwritten
+      // by native transition updates. This class exists only for our link view.
+      var classes = String(balloon.view.class || '').split(/\s+/).filter(function (name) {
+        return name && name !== 'papijo-managed-image-link-ui';
+      });
+      if (managedLink) { classes.push('papijo-managed-image-link-ui'); }
+      balloon.view.class = classes.join(' ');
+      if (!linkView) { return; }
+      if (view !== linkUi.formView) { return; }
+      linkSessions.set(view, managedLink ? { target: image, id: image.getAttribute('inlineImageId') } : null);
+      if (adaptedLinks.has(view)) { return; }
+      adaptedLinks.add(view);
+      view.on('submit', function (event) {
+        var session = linkSessions.get(view);
+        if (!session) { return; }
+        var current = selectedImage();
+        var href = managed.normalizeLink(view.urlInputView.fieldView.element.value);
+        var validTarget = current === session.target && editableImage(current) && current.getAttribute('inlineImageId') === session.id;
+        if (!validTarget || !href) {
+          event.stop();
+          view.urlInputView.errorText = t(!validTarget ? 'imageLinkTargetUnavailable' : 'enterValidImageLink');
+          view.urlInputView.fieldView.focus();
+        }
+      }, { priority: 'high' });
+    });
+    var imageToolbar = null;
+    var companionContent = null;
+    function keepImageToolbarAvailable() {
+      var view = balloon.visibleView;
+      if (view && view.items && Array.from(view.items).some(function (item) { return item.papijoManagedImageButton; })) {
+        imageToolbar = view;
+      }
+      // The native rotator clears its public content collection on each stack
+      // transition. Reuse the repository's existing toolbar, never clone it.
+      var isLink = view && (view === linkUi.formView || view === linkUi.actionsView);
+      var canShare = isLink && editableImage(selectedImage()) && imageToolbar && balloon.hasView(imageToolbar);
+      if (companionContent && view !== imageToolbar && !canShare && companionContent.getIndex(imageToolbar) !== -1) {
+        companionContent.remove(imageToolbar);
+      }
+      companionContent = null;
+      if (!canShare) { return; }
+      var content = Array.from(balloon.view.content).map(function (child) { return child.content; })
+        .find(function (collection) { return collection && collection.getIndex(view) !== -1; });
+      if (!content) { return; }
+      if (content.getIndex(imageToolbar) === -1) { content.add(imageToolbar, 0); }
+      companionContent = content;
+    }
+    editor.listenTo(balloon, 'change:visibleView', keepImageToolbarAvailable, { priority: 'low' });
+    editor.listenTo(editor.ui, 'update', keepImageToolbarAvailable, { priority: 'low' });
+    editor.once('destroy', function () {
+      if (companionContent && balloon.visibleView !== imageToolbar && companionContent.getIndex(imageToolbar) !== -1) {
+        companionContent.remove(imageToolbar);
+      }
+    });
     var adaptedForms = new WeakSet();
     // Observe the public balloon view instead of replacing CKEditor's private
     // dialog. The native form's input and submit event are the narrow 43.3 hook.
@@ -224,10 +381,12 @@
     // the main toolbar retains CKEditor's normal automatic grouping.
     function fitImageToolbar() {
       var toolbar = balloon.visibleView;
-      if (!toolbar || !toolbar.items || !Array.from(toolbar.items).some(function (item) {
+      var linkView = toolbar && (toolbar === linkUi.formView || toolbar === linkUi.actionsView) &&
+        balloon.view.element.classList.contains('papijo-managed-image-link-ui');
+      if (!toolbar || (!linkView && (!toolbar.items || !Array.from(toolbar.items).some(function (item) {
         return item.papijoManagedImageButton;
-      })) { return; }
-      toolbar.maxWidth = 'calc(100vw - 16px)';
+      })))) { return; }
+      if (!linkView) { toolbar.maxWidth = 'calc(100vw - 16px)'; }
       var rect = toolbar.element.getBoundingClientRect();
       if (!rect.width || (rect.left >= 8 && rect.right <= window.innerWidth - 8)) { return; }
       var viewImage = editor.editing.view.document.selection.getSelectedElement();
@@ -455,7 +614,7 @@
       config.plugins.push(inline, 'ImageToolbar', 'ImageStyle');
       config.image = Object.assign({}, config.image, {
         styles: { options: ['inline', 'alignLeft', 'alignRight'] },
-        toolbar: ['imageStyle:inline', 'imageStyle:alignLeft', 'imageStyle:alignRight', '|', 'insertImage', 'imageTextAlternative'],
+        toolbar: ['imageStyle:inline', 'imageStyle:alignLeft', 'imageStyle:alignRight', '|', 'insertImage', 'papijoLinkImage', 'imageTextAlternative'],
         insert: Object.assign({}, config.image && config.image.insert, { integrations: ['papijoH5p'] })
       });
       var items = Array.isArray(config.toolbar) ? config.toolbar : config.toolbar.items;

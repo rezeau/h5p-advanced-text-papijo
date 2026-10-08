@@ -149,7 +149,8 @@
           'Link selection',
           function (result, output) {
             assert(result.valid, 'Link selection was rejected');
-            assert(output.includes('<a href="https://example.com"'), 'Link was removed: ' + output);
+            const linked = document.createElement('div'); linked.innerHTML = output;
+            assert(linked.querySelector('a[href="https://example.com"]'), 'Link was removed: ' + output);
             assert(output.includes('data-papijo-tooltip="Link selection"'), 'Tooltip annotation missing from link selection');
           }
         );
@@ -281,7 +282,7 @@
         await closeEditor(undoContext);
         const reopenContext = await openEditor(saved);
         const reopened = reopenContext.editor.getData();
-        assert(reopened === saved, 'Created tooltip did not survive save/reopen: ' + reopened);
+        assert(reopened === saved.replace(/<div class="table-overflow-protection"><\/div>$/, ''), 'Created tooltip did not survive save/reopen: ' + reopened);
         results.push({ name: 'save and reopen after creation', saved: saved, reopened: reopened });
         await closeEditor(reopenContext);
 

@@ -1,5 +1,8 @@
 {
   "libraryStrings": {
+    "linkInlineImage": "Lien d’image",
+    "enterValidImageLink": "Saisissez une URL HTTP ou HTTPS absolue sans identifiants de connexion.",
+    "imageLinkTargetUnavailable": "L’image sélectionnée n’est plus disponible ou modifiable. Fermez le formulaire du lien et sélectionnez de nouveau l’image.",
     "insertInlineImage": "Insérer une image",
     "applyInlineImage": "Insérer l’image",
     "replaceInlineImage": "Remplacer l’image",

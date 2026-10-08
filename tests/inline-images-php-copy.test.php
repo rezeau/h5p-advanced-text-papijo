@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 // Actual PHP editor/file storage/export methods, isolated from the CMS/database.
-$installed = 'C:/my_first_h5p_environment/libraries/';
+$installed = rtrim(getenv('PAPIJO_PHP_ROOT') ?: 'C:/my_first_h5p_environment/libraries/', '/\\') . '/';
 require_once $installed . 'h5p-php-library/h5p.classes.php';
 require_once $installed . 'h5p-php-library/h5p-file-storage.interface.php';
 require_once $installed . 'h5p-php-library/h5p-default-storage.class.php';
@@ -201,6 +201,67 @@ try {
     echo 'PHP REPLACEMENT OLD/NEW SAVE/LOCALIZE/RETAIN/EXPORT/REIMPORT PASS ' . $container . "\n";
   }
   copyCheck($framework->exports === 13, 'All original and replacement exports must complete');
+  // Linked occurrences retain the same semantic file lifecycle. Actual storage
+  // and H5PExport run only in this test's unique temporary tree.
+  $linkValidator = new H5PContentValidator($framework, null);
+  foreach (array('standalone', 'accordion', 'column', 'book') as $container) {
+    $destination++;
+    $child = json_decode(json_encode($source));
+    $A = $child->inlineImages[3];
+    $B = (object) array('id' => 'php-linked-replacement-B', 'image' => json_decode(json_encode($child->inlineImages[4]->image)), 'alt' => 'Replacement link purpose');
+    $child->inlineImages[] = $B;
+    $X = 'https://example.com/X?q=1&amp;b=2#details';
+    $Y = 'http://example.com/Y';
+    $child->text = '<p><span class="papijo-inline-image" data-papijo-inline-image-id="' . $B->id .
+      '" data-papijo-inline-image-style="alignLeft" data-papijo-inline-image-link="' . $X . '"></span>' .
+      '<span class="papijo-inline-image" data-papijo-inline-image-id="' . $A->id .
+      '" data-papijo-inline-image-style="alignRight" data-papijo-inline-image-link="' . $Y . '"></span>' .
+      '<span class="papijo-inline-image" data-papijo-inline-image-id="' . $A->id . '"></span></p>';
+    $linkedHtml = $child->text;
+    $linkValidator->validateText($child->text, $core->loadLibrarySemantics('H5P.AdvancedTextPapiJo', 1, 2)[0]);
+    copyCheck($child->text === $linkedHtml, 'PHP filtering must preserve occurrence links/query/fragment');
+    foreach (array_merge($child->inlineImages, $child->tooltipImages) as $entry) {
+      $entry->image->path = '../42/' . $entry->image->path;
+    }
+    $library = array('name' => 'H5P.AdvancedTextPapiJo', 'majorVersion' => 1, 'minorVersion' => 2);
+    $action = (object) array('library' => 'H5P.AdvancedTextPapiJo 1.2', 'params' => $child, 'subContentId' => 'linked-child');
+    $params = $child;
+    if ($container === 'accordion') {
+      $library = array('name' => 'H5P.AccordionPapiJo', 'majorVersion' => 1, 'minorVersion' => 1);
+      $params = (object) array('panels' => array((object) array('title' => 'Linked child', 'content' => $action)));
+    }
+    if ($container === 'column' || $container === 'book') {
+      $library = array('name' => 'H5P.ColumnPapiJo', 'majorVersion' => 1, 'minorVersion' => 20);
+      $params = (object) array('content' => array((object) array('content' => $action)));
+    }
+    if ($container === 'book') {
+      $library = array('name' => 'H5P.InteractiveBookPapiJo', 'majorVersion' => 1, 'minorVersion' => 16);
+      $params = (object) array('chapters' => array((object) array('library' => 'H5P.ColumnPapiJo 1.20', 'params' => $params)));
+    }
+    $editor->processParameters($destination, $library, $params);
+    $editor->processParameters($destination, $library, $params, $library, json_decode(json_encode($params)));
+    copyCheck($child->text === $linkedHtml, 'Semantic save/re-save must preserve independent linked/unlinked occurrences');
+    foreach (array_merge($child->inlineImages, $child->tooltipImages) as $entry) {
+      copyCheck(array_keys(get_object_vars($entry)) === array('id', 'image', 'alt'), 'Link must not enter definitions');
+      copyCheck(is_file($temporary . '/content/' . $destination . '/' . $entry->image->path), 'Linked destination must own its file');
+    }
+    $content = array('id' => $destination, 'slug' => 'image-link', 'title' => 'Linked fixture', 'library' => $library,
+      'embedType' => 'div', 'filtered' => json_encode($params), 'dependencies' => array(), 'metadata' => array());
+    copyCheck($export->createExportFile($content), 'Actual linked content export must succeed');
+    $archive = new ZipArchive();
+    copyCheck($archive->open($temporary . '/exports/image-link-' . $destination . '.h5p') === true, 'Actual linked export must open');
+    $extracted = $temporary . '/link-import-' . $destination;
+    copyCheck($archive->extractTo($extracted), 'Linked export must extract'); $archive->close();
+    $core->fs->saveContent($extracted . '/content', array('id' => $destination + 500));
+    copyCheck(json_decode(file_get_contents($temporary . '/content/' . ($destination + 500) . '/content.json')) == $params,
+      'Actual reimport preserves all linked parameters');
+    foreach (array_merge($child->inlineImages, $child->tooltipImages) as $entry) {
+      copyCheck(hash_file('sha256', $temporary . '/content/' . ($destination + 500) . '/' . $entry->image->path) ===
+        hash_file('sha256', $temporary . '/content/' . $destination . '/' . $entry->image->path), 'Retained linked/unlinked file bytes survive reimport');
+    }
+    echo 'PHP IMAGE LINK FILTER/SAVE/RETAIN/EXPORT/REIMPORT PASS ' . $container . "\n";
+  }
+  copyCheck($framework->exports === 17, 'Original/replacement/link content exports must complete');
 }
 finally {
   // Only this test's unique temporary tree; never a site/content/library directory.
