@@ -1,5 +1,9 @@
 # AdvancedTextPapiJo verification
 
+See [Paragraph actions](INLINE-IMAGES-PARAGRAPH.md) for the root-paragraph scope,
+separator policy, native/external UI, keyboard path and acceptance checklist.
+Its browser extension runs inside `/inline-images.html` on both native hosts.
+
 Run all commands from the repository root in PowerShell. The browser harness
 server uses the existing local H5P development environment configured in
 `phase1a-harness-server.js`; this document does not introduce additional
@@ -124,9 +128,21 @@ the expanded test coverage, and the current manual acceptance checklist.
 
 See [the managed-path copy/paste fix report](INLINE-IMAGES-COPY-PASTE.md) for the
 accepted reference grammar, security boundary, clipboard tests, and separate
-CLI/PHP export findings. The captured source is
-`tests/fixtures/inline-image-copy-source.json`; image bytes and clipboard/core
-modules come from the installed `C:\my_first_h5p_environment` fixture.
+CLI/PHP export findings. `tests/fixtures/inline-image-copy-source.json` preserves
+the captured IDs/occurrences but now references deterministic test images.
+`tests/fixtures/inline-image-copy-files.json` maps its four distinct image paths
+to the existing repository-owned small/large SVG fixtures. MIME and dimensions
+match those SVGs; the tooltip has its own file path, separate from inline files.
+
+`contentFixture()` in `h5p-inline-image-copy-fixtures.js` builds unique temporary
+standalone/Accordion/Column/Book content folders and metadata, using the actual
+installed clipboard to construct foreign references. Tests clean up those
+folders after each run, including failures. No image bytes or content parameters
+are read from live `content/text-01` or another manual-content folder.
+The installed `C:\my_first_h5p_environment` is used only for real core/CLI/library
+code and library semantics. The two copy/export tests still verify both semantic
+stores, exact paths, physical file existence and identical bytes. The documented
+CLI foreign-reference export limitation remains an explicit assertion.
 
 Additional PHP save/file/export checks (isolated temporary storage only):
 
@@ -142,6 +158,9 @@ node tests/verify-inline-images-cli.js
 
 This requires Playwright through the local runtime or `NODE_PATH`. It uses
 GET/HEAD requests and disposable runtime DOM, with no content saves or uploads.
+Fixture image requests are fulfilled from repository SVGs after the real
+`H5P.getPath()` resolves the original or repeated foreign reference; this script
+also requires no live manual-content image bytes.
 Set `PAPIJO_CLI_ORIGIN` to change the origin. The Node suite includes an isolated
 test of the installed CLI's content export/import functions. These checks need
 temporary file renames; the Windows sandbox may require an escalated run.
@@ -208,10 +227,10 @@ php tests/inline-images-php-copy.test.php
 Remove-Item Env:PAPIJO_PHP_ROOT
 ```
 
-The copy test retains the existing CLI content/library fixtures, uses the
-selected actual PHP core/editor methods, and writes only isolated temporary
-storage which it removes afterward. These temporary content exports exercise
-the lifecycle; they are not development-library packages for installation.
+The copy test uses repository-owned content/image fixtures and installed library
+semantics, calls the selected actual PHP core/editor methods, and writes only
+isolated temporary storage which it removes afterward. These temporary content
+exports exercise the lifecycle; they are not development-library packages for installation.
 
 Image Resize Phase 1 adds five Node tests and `inline-images-resize-browser.js`
 to the native image route. The runner now tests 1280/480/320/160px on both hosts,

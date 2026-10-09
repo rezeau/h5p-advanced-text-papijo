@@ -105,7 +105,8 @@ occurrences, and one tooltip definition. Clipboard parsing preserves all
 managed IDs, alt, MIME, dimensions, copyright, and marker HTML. It clears the
 copied library child's `subContentId` independently of managed occurrence IDs.
 
-The captured real occurrence paths include:
+The historical real CLI occurrence paths captured during the original diagnosis
+include (these filenames are not current automated-fixture requirements):
 
 ```text
 Accordion cow: ../text-01/images/bde121d522e93dba9bc7e80efbac0c63.jpg
@@ -129,6 +130,29 @@ content IDs are recorded by the optional live script. It constructs copied
 content in disposable browser DOM on the real CLI pages; it does not save or
 alter the user's current panels/content/clipboard. Physical bytes remain in
 `content/text-01/images/`; foreign paths resolve to those files.
+
+### Deterministic automated image fixtures (2026-10-09)
+
+The observations above describe the original manual-content capture. That live
+content is freely editable and the historical tooltip JPEG was subsequently
+removed. Depending on its bytes caused two Node failures even at unchanged
+committed HEAD; it was never a Git-owned image fixture.
+
+Current automated parameters keep the captured managed IDs, occurrences, ALT and
+copyright, with paths/MIME/dimensions updated for repository-owned SVGs.
+`inline-image-copy-files.json` maps four distinct file paths to the existing
+small/large SVG fixtures: retained inline, shared inline A, inline B and tooltip.
+The tooltip path remains separate so inline retention cannot mask a missing
+tooltip file. No duplicate binary fixture or replacement live JPEG is needed.
+
+Node tests build isolated content folders/metadata from those parameters and
+images, use the installed real clipboard/CLI, verify exact references and bytes,
+and remove their temporary trees. PHP builds its numeric source content from the
+same image mapping. The optional live rendering script serves those fixture bytes
+in disposable browser requests while preserving actual H5P resolver calls.
+None of these checks reads image bytes from manually editable CLI content.
+Standalone local export/reimport remains self-contained; copied foreign
+references remain explicitly characterized as not self-contained in the CLI.
 
 Same-parent and InteractiveBook destination path generation are covered by
 installed-core tests. Full InteractiveBook navigation and real CMS UI

@@ -420,6 +420,11 @@
     H5PEditor.AdvancedTextPapiJoInlineImageResize.install(editor, function (image) {
       return !!editableImage(image);
     }, ButtonView, t);
+    H5PEditor.AdvancedTextPapiJoInlineImageParagraph.install(editor, function (image) {
+      var store = getStore(widget);
+      return !!editableImage(image) && managed.validDefinition(store.getDefinition(image.getAttribute('inlineImageId'))) &&
+        typeof image.getAttribute('src') === 'string' && !!image.getAttribute('src');
+    }, ButtonView, t);
     function refreshInsertion() {
       var selection = editor.model.document.selection;
       var selected = selection.getSelectedElement();
@@ -636,6 +641,7 @@
         toolbar: ['imageStyle:inline', 'imageStyle:alignLeft', 'imageStyle:alignRight', '|', 'insertImage', 'papijoLinkImage', 'imageTextAlternative', 'papijoResetImageSize'],
         insert: Object.assign({}, config.image && config.image.insert, { integrations: ['papijoH5p'] })
       });
+      config.image.toolbar.push('papijoImageParagraphActions');
       var items = Array.isArray(config.toolbar) ? config.toolbar : config.toolbar.items;
       // Grouping removes items from the end. Keep image insertion with the
       // common controls, while allowing later controls to overflow normally.

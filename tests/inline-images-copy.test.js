@@ -5,12 +5,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const test = require('node:test');
-const { environment, sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
+const { sourceParams, clipboard, imageFixture, contentFixture } = require('./h5p-inline-image-copy-fixtures');
 const context = {};
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../shared/advanced-text-papijo-inline-images.js'), 'utf8'), context);
 const managed = context.PapijoManagedInlineImages;
 
-test('replacement clipboard retains unreferenced A and new B through nested and repeated copies', () => {
+test('replacement clipboard retains unreferenced A and new B through nested and repeated copies', t => {
+  const files = contentFixture(t);
   const source = sourceParams();
   const A = source.inlineImages.find(entry => entry.id === '97dd2fde-fd7f-46e2-bb2d-7b686993880f');
   const physicalB = source.inlineImages.find(entry => entry.id === '2200ad5e-671e-42e3-835b-93cbcc338fae');
@@ -29,7 +30,7 @@ test('replacement clipboard retains unreferenced A and new B through nested and 
     for (const id of [A.id, B.id]) {
       const entry = pasted.params.inlineImages.find(item => item.id === id);
       assert.ok(managed.validDefinition(entry));
-      assert.ok(fs.existsSync(path.resolve(environment, 'content', destination, entry.image.path)));
+      assert.ok(fs.existsSync(path.resolve(files.root, 'content', destination, entry.image.path)));
       assert.equal(entry.alt, id === A.id ? A.alt : B.alt);
     }
     assert.equal(pasted.params.inlineImages.length, source.inlineImages.length);
@@ -63,7 +64,8 @@ test('installed content clipboard preserves per-occurrence presentation through 
   }
 });
 
-test('installed H5P content clipboard preserves stores/IDs and produces accepted exact references', () => {
+test('installed H5P content clipboard preserves stores/IDs and produces accepted exact references', t => {
+  const files = contentFixture(t);
   const source = sourceParams();
   const action = { library: 'H5P.AdvancedTextPapiJo 1.2', params: source, subContentId: 'old-child-id' };
   const core = clipboard();
@@ -79,7 +81,10 @@ test('installed H5P content clipboard preserves stores/IDs and produces accepted
       pasted.params[store].forEach((entry, index) => {
         const original = source[store][index];
         assert.deepEqual(entry, { ...original, image: { ...original.image, path: '../text-01/' + original.image.path } });
-        assert.ok(fs.existsSync(path.resolve(environment, 'content', destination, entry.image.path)));
+        const physical = path.resolve(files.root, 'content', destination, entry.image.path);
+        assert.ok(fs.existsSync(physical));
+        assert.deepEqual(fs.readFileSync(physical), fs.readFileSync(imageFixture(original.image.path)),
+          'Every retained inline/tooltip reference must resolve to the exact fixture bytes');
         assert.equal(managed.validPath(entry.image.path), true);
         let called;
         assert.ok(managed.resolve(entry, destination, (...args) => {
@@ -97,7 +102,7 @@ test('installed H5P content clipboard preserves stores/IDs and produces accepted
   for (const entry of book.params.inlineImages.concat(book.params.tooltipImages)) {
     assert.match(entry.image.path, /^\.\.\/col-pj\/\.\.\/acordion-papijo-001\/\.\.\/text-01\/images\//);
     assert.equal(managed.validPath(entry.image.path), true);
-    assert.ok(fs.existsSync(path.resolve(environment, 'content/interactive-book', entry.image.path)));
+    assert.ok(fs.existsSync(path.resolve(files.root, 'content/interactive-book', entry.image.path)));
   }
 });
 

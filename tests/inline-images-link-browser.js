@@ -35,10 +35,10 @@ window.runPapijoInlineImageLinks = async function (h) {
     assert(rect.width && rect.height && rect.left >= 0 && rect.right <= innerWidth &&
       balloon.view.element.contains(toolbar.element), 'Image toolbar physically visible inside native balloon');
     var buttons = Array.from(toolbar.element.querySelectorAll('button'));
-    assert(buttons.length === 7 && buttons.every(function (button) {
+    assert(buttons.length === 8 && buttons.every(function (button) {
       var bounds = button.getBoundingClientRect(), hit = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
       return bounds.width && bounds.height && hit && button.contains(hit);
-    }), 'All seven image controls remain directly reachable');
+    }), 'All eight image controls remain directly reachable');
     return toolbar;
   }
   async function form(ctx) {
@@ -331,7 +331,7 @@ window.runPapijoInlineImageLinks = async function (h) {
       var balloon = editor.plugins.get('ContextualBalloon'), toolbar = balloon.visibleView;
       var rect = toolbar.element.getBoundingClientRect();
       var toolbarHeight = rect.height;
-      assert(rect.left >= 0 && rect.right <= innerWidth && toolbar.element.querySelectorAll('button').length === 7, 'Seven image controls fit viewport');
+      assert(rect.left >= 0 && rect.right <= innerWidth && toolbar.element.querySelectorAll('button').length === 8, 'Eight image controls fit viewport');
       assert(!editor.config.get('toolbar.shouldNotGroupWhenFull'), 'Main toolbar grouping unchanged');
       editor.editing.view.getDomRoot().setAttribute('data-papijo-link-keyboard', 'editable');
       await window.papijoHarnessPressKey('[data-papijo-link-keyboard="editable"]', 'Control+k');

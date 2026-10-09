@@ -1,5 +1,9 @@
 {
   "libraryStrings": {
+    "imageParagraphActions": "Paragraph actions",
+    "separateImageParagraph": "Put image in separate paragraph",
+    "insertImageParagraphBefore": "Insert paragraph before",
+    "insertImageParagraphAfter": "Insert paragraph after",
     "resetImageSize": "Reset size",
     "resizeHandlenorthWest": "Resize image from top left",
     "resizeHandlenorthEast": "Resize image from top right",

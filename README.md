@@ -52,6 +52,12 @@ local region, preserves aspect ratio, and cannot upscale beyond intrinsic size.
 Default and explicit 100% are distinct; wrapping, links, ALT and replacement
 preserve width. See the [Resize report and manual checklist](tests/INLINE-IMAGES-RESIZE.md).
 
+Selected managed images in ordinary root paragraphs support **Put image in
+separate paragraph**, or **Insert paragraph before/after** when already alone.
+These structural actions preserve image links, ALT, wrapping and percentage size.
+Lists, table cells, headings, soft breaks and multiple-image paragraphs are deferred.
+See the [Paragraph actions scope and verification](tests/INLINE-IMAGES-PARAGRAPH.md).
+
 Tooltip images are stored in the optional root `tooltipImages` semantic list.
 The annotated span contains only the sanitized tooltip text and, when needed,
 `data-papijo-tooltip-id`; image URLs and markup are never stored in the text

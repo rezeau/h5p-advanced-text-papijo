@@ -51,7 +51,8 @@ try {
   foreach (array('h5p' => $core, 'storage' => $storage) as $property => $value) {
     $editorClass->getProperty($property)->setValue($editor, $value);
   }
-  $sourceFolder = 'C:/my_first_h5p_environment/content/text-01/';
+  $sourceFolder = __DIR__ . '/fixtures/';
+  $fixtureFiles = json_decode(file_get_contents($sourceFolder . 'inline-image-copy-files.json'), true);
   $source = json_decode(file_get_contents(__DIR__ . '/fixtures/inline-image-copy-source.json'));
   // Keep the captured Phase 1/2 fixture intact; exercise Phase 3 on a clone.
   foreach (array('97dd2fde-fd7f-46e2-bb2d-7b686993880f' => 'alignLeft',
@@ -62,7 +63,8 @@ try {
   }
   mkdir($temporary . '/content/42/images', 0777, true);
   foreach (array_merge($source->inlineImages, $source->tooltipImages) as $entry) {
-    copyCheck(copy($sourceFolder . $entry->image->path, $temporary . '/content/42/' . $entry->image->path), 'Source fixture must exist');
+    copyCheck(isset($fixtureFiles[$entry->image->path]), 'Every semantic image requires repository-owned bytes');
+    copyCheck(copy($sourceFolder . $fixtureFiles[$entry->image->path], $temporary . '/content/42/' . $entry->image->path), 'Source fixture must exist');
   }
   $framework = new InlineCopyFramework();
   $export = (new ReflectionClass('H5PExport'))->newInstanceWithoutConstructor();
@@ -94,7 +96,7 @@ try {
           copyCheck($entry->image->path === $original->image->path, 'Semantic save must rewrite to local image path');
           copyCheck($entry->id === $original->id && $entry->alt === $original->alt, 'Save must preserve managed ID and alt');
           copyCheck(hash_file('sha256', $temporary . '/content/' . $destination . '/' . $entry->image->path) ===
-            hash_file('sha256', $sourceFolder . $original->image->path), 'Real storage must clone identical bytes');
+            hash_file('sha256', $sourceFolder . $fixtureFiles[$original->image->path]), 'Real storage must clone identical bytes');
         }
       }
       copyCheck($child->text === $source->text, 'Save must preserve marker HTML');

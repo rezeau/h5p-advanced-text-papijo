@@ -11,6 +11,8 @@ const ckeditorRoot = process.env.PAPIJO_CKEDITOR_ROOT ||
   'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\ckeditor';
 const editorRoot = path.dirname(ckeditorRoot);
 const routes = {
+  '/inline-images-paragraph-browser.js': path.join(__dirname, 'inline-images-paragraph-browser.js'),
+  '/advanced-text-papijo-inline-image-paragraph.js': path.join(root, 'editor', 'advanced-text-papijo-inline-image-paragraph.js'),
   '/inline-images-resize-browser.js': path.join(__dirname, 'inline-images-resize-browser.js'),
   '/advanced-text-papijo-inline-image-resize.js': path.join(root, 'editor', 'advanced-text-papijo-inline-image-resize.js'),
   '/fixture-small.svg': path.join(__dirname, 'fixtures', 'inline-image-small.svg'),

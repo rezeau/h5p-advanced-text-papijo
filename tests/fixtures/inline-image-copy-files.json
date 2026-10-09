@@ -1,0 +1,6 @@
+{
+  "images/inline-retained.svg": "inline-image-small.svg",
+  "images/inline-image-small.svg": "inline-image-small.svg",
+  "images/inline-image-large.svg": "inline-image-large.svg",
+  "images/tooltip-image.svg": "inline-image-small.svg"
+}

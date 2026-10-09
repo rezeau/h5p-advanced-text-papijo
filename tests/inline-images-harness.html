@@ -50,6 +50,7 @@
   <script src="/h5peditor-image.js"></script>
   <script src="/advanced-text-papijo-inline-images.js"></script>
   <script src="/advanced-text-papijo-inline-image-resize.js"></script>
+  <script src="/advanced-text-papijo-inline-image-paragraph.js"></script>
   <script src="/advanced-text-papijo-inline-image.js"></script>
   <script src="/advanced-text-papijo-tooltip-sanitizer.js"></script>
   <script src="/advanced-text-papijo-tooltip-selection.js"></script>
@@ -63,6 +64,7 @@
   <script src="/inline-images-replace-browser.js"></script>
   <script src="/inline-images-link-browser.js"></script>
   <script src="/inline-images-resize-browser.js"></script>
+  <script src="/inline-images-paragraph-browser.js"></script>
 </head>
 <body class="h5peditor">
   <div id="fixture"></div>
@@ -136,7 +138,7 @@
         var balloon = ctx.editor.plugins.get('ContextualBalloon');
         var toolbar = balloon.visibleView;
         assert(toolbar && toolbar.element.querySelector('button[data-cke-tooltip-text="Change image text alternative"]'), 'Native image toolbar must appear');
-        assert(toolbar.items.length === 8, 'Image toolbar must have three styles, separator, replace, link, alt and reset');
+        assert(toolbar.items.length === 9, 'Image toolbar must have three styles, separator, replace, link, alt, reset and paragraph actions');
         toolbar.element.querySelector('button[data-cke-tooltip-text="Change image text alternative"]').click();
         var form = balloon.visibleView;
         assert(form.element.classList.contains('ck-text-alternative-form'), 'Must use the native alternative text form');
@@ -303,6 +305,8 @@
           submitAlt: submitAlt, assert: assert, results: results });
         await runPapijoInlineImageResize({ open: open, close: close, apply: apply, caret: caret,
           selectImage: selectImage, imageModel: imageModel, assert: assert, results: results });
+        await runPapijoInlineImageParagraph({ open: open, close: close, apply: apply, caret: caret,
+          imageModel: imageModel, selectImage: selectImage, assert: assert, results: results });
         await runPapijoInlineImageLinks({ open: open, close: close, apply: apply, caret: caret,
           imageModel: imageModel, selectImage: selectImage, altForm: altForm,
           submitAlt: submitAlt, assert: assert, results: results });

@@ -55,7 +55,8 @@ test('link contract does not change definition fields or managed file path valid
   assert.deepEqual(semantics.find(x => x.name === 'inlineImages').field.fields.map(x => x.name), ['id', 'image', 'alt']);
 });
 
-test('installed H5P clipboard preserves independent X/Y/unlinked occurrences and physical references', () => {
+test('installed H5P clipboard preserves independent X/Y/unlinked occurrences and physical references', t => {
+  const files = fixture.contentFixture(t);
   const source = fixture.sourceParams(), id = source.inlineImages[3].id;
   source.text = '<p>' + ['https://example.com/X?q=1&amp;b=2#x', 'http://example.com/Y', null].map(href =>
     '<span class="papijo-inline-image" data-papijo-inline-image-id="' + id + '"' +
@@ -68,7 +69,7 @@ test('installed H5P clipboard preserves independent X/Y/unlinked occurrences and
     assert.equal(pasted.subContentId, undefined);
     for (const entry of pasted.params.inlineImages) {
       assert.ok(managed.validDefinition(entry));
-      assert.ok(fs.existsSync(path.resolve(fixture.environment, 'content', destination, entry.image.path)));
+      assert.ok(fs.existsSync(path.resolve(files.root, 'content', destination, entry.image.path)));
       assert.equal(Object.hasOwn(entry, 'link'), false);
     }
     core.copy(pasted, destination);

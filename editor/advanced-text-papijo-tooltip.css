@@ -130,3 +130,24 @@
 .papijo-image-resize-southEast { cursor: nwse-resize; }
 .papijo-image-resize-northEast,
 .papijo-image-resize-southWest { cursor: nesw-resize; }
+.ck.ck-button.papijo-image-paragraph-arrow {
+  position: fixed;
+  z-index: 1000;
+  width: 28px;
+  height: 24px;
+  min-width: 28px;
+  min-height: 24px;
+  padding: 2px 4px;
+  border: 1px solid var(--ck-color-button-default-active-background, #ccc);
+  border-radius: 3px;
+  background: var(--ck-color-base-background, #fff);
+}
+.ck.ck-button.papijo-image-paragraph-arrow:focus-visible {
+  outline: 3px solid var(--ck-color-focus-border, #1a73e8);
+  outline-offset: 2px;
+}
+.papijo-image-paragraph-dropdown .ck-button__label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: start;
+}

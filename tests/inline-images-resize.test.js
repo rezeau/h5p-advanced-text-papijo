@@ -6,7 +6,7 @@ const test = require('node:test');
 const context = {};
 vm.runInNewContext(fs.readFileSync('shared/advanced-text-papijo-inline-images.js', 'utf8'), context);
 const managed = context.PapijoManagedInlineImages;
-const { clipboard, sourceParams, environment } = require('./h5p-inline-image-copy-fixtures');
+const { clipboard, sourceParams, contentFixture } = require('./h5p-inline-image-copy-fixtures');
 const path = require('node:path');
 
 test('occurrence width accepts finite one-decimal percentages and normalizes trailing .0', () => {
@@ -36,12 +36,15 @@ test('resize is a declared local editor asset before the model adapter, with no 
   const manifest = JSON.parse(fs.readFileSync('editor/library.json'));
   const paths = manifest.preloadedJs.map(item => item.path);
   assert.equal(paths.indexOf('advanced-text-papijo-inline-image-resize.js') + 1,
+    paths.indexOf('advanced-text-papijo-inline-image-paragraph.js'));
+  assert.equal(paths.indexOf('advanced-text-papijo-inline-image-paragraph.js') + 1,
     paths.indexOf('advanced-text-papijo-inline-image.js'));
   assert.deepEqual([manifest.majorVersion, manifest.minorVersion, manifest.patchVersion], [1, 1, 2]);
   assert.ok(!manifest.preloadedDependencies && !manifest.editorDependencies);
 });
 
-test('installed H5P clipboard preserves independent widths and retained files across nested/repeated content copies', () => {
+test('installed H5P clipboard preserves independent widths and retained files across nested/repeated content copies', t => {
+  const files = contentFixture(t);
   const source = sourceParams(), A = source.inlineImages[3];
   source.text = '<p>' + [undefined, 30, 70, 100, 55.5, 0.1].map((width, i) =>
     '<span class="papijo-inline-image" data-papijo-inline-image-id="' + A.id + '"' +
@@ -57,7 +60,7 @@ test('installed H5P clipboard preserves independent widths and retained files ac
       assert.deepEqual(Object.keys(entry), ['id', 'image', 'alt']);
       assert.equal(entry.id, source.inlineImages[index].id);
       assert.ok(managed.validDefinition(entry));
-      assert.ok(fs.existsSync(path.resolve(environment, 'content', destination, entry.image.path)));
+      assert.ok(fs.existsSync(path.resolve(files.root, 'content', destination, entry.image.path)));
     });
     core.copy(pasted, destination);
   }

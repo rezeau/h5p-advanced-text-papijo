@@ -5,11 +5,12 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { chromium } = require('playwright');
-const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
+const { sourceParams, clipboard, imageFixture } = require('./h5p-inline-image-copy-fixtures');
 
 (async () => {
   const origin = process.env.PAPIJO_CLI_ORIGIN || 'http://localhost:8080';
   const source = { library: 'H5P.AdvancedTextPapiJo 1.2', params: sourceParams() };
+  const fixturePaths = new Set(source.params.inlineImages.concat(source.params.tooltipImages).map(entry => entry.image.path));
   for (const [id, style] of [
     ['97dd2fde-fd7f-46e2-bb2d-7b686993880f', 'alignLeft'],
     ['2200ad5e-671e-42e3-835b-93cbcc338fae', 'alignRight']
@@ -64,7 +65,13 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
     for (const [route, contentId, type, params, replacement, linked, resized] of cases) {
       const page = await browser.newPage();
       try {
-        await page.route('**/*', route => ['GET', 'HEAD'].includes(route.request().method()) ? route.continue() : route.abort());
+        await page.route('**/*', route => {
+          if (!['GET', 'HEAD'].includes(route.request().method())) { return route.abort(); }
+          const imagePath = 'images/' + path.posix.basename(new URL(route.request().url()).pathname);
+          // Exercise the real getPath/foreign references with deterministic bytes,
+          // without installing files into the user's manually editable content.
+          return fixturePaths.has(imagePath) ? route.fulfill({ path: imageFixture(imagePath), contentType: 'image/svg+xml' }) : route.continue();
+        });
         await page.goto(origin + '/view/' + route + '/' + contentId);
         await page.locator('iframe').first().waitFor();
         const frame = await (await page.locator('iframe').first().elementHandle()).contentFrame();
@@ -89,7 +96,14 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
             if (type === 'AccordionPapiJo') { $root.find('.h5p-panel-button')[0].click(); }
             const images = Array.from($root[0].querySelectorAll('img.papijo-managed-inline-image'));
             if (images.length !== 2) { throw Error('Both managed occurrences must render'); }
-            for (const image of images) { await image.decode(); }
+            for (const image of images) {
+              // SVG decode may finish before the runtime's load handler projects
+              // the intrinsic-size cap. Measure after both decode and that event.
+              const loaded = image.complete && (!resized ||
+                image.closest('.papijo-inline-image').style.getPropertyValue('--papijo-image-natural-width')) ?
+                Promise.resolve() : new Promise(resolve => image.addEventListener('load', resolve, { once: true }));
+              await Promise.all([image.decode(), loaded]);
+            }
             if (type === 'AccordionPapiJo') {
               await new Promise(resolve => $root.find('.h5p-panel-content').promise().done(resolve));
             }
@@ -144,9 +158,11 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
           }
           finally { H5P.getPath = getPath; $root.remove(); }
         }, { contentId, type, params, linked, resized });
-        assert.deepEqual(result.widths, replacement ? [460, 460] : [425, 460]); assert.equal(result.tooltipWidth, 320);
         assert.ok(result.calls.every(call => call[1] === contentId));
         const childParams = type === 'AdvancedTextPapiJo' ? params : type === 'AccordionPapiJo' ? params.panels[0].content.params : params.content[0].content.params;
+        const activeIds = [replacement ? 'live-replacement-B' : '97dd2fde-fd7f-46e2-bb2d-7b686993880f', '2200ad5e-671e-42e3-835b-93cbcc338fae'];
+        assert.deepEqual(result.widths, activeIds.map(id => childParams.inlineImages.find(entry => entry.id === id).image.width));
+        assert.equal(result.tooltipWidth, childParams.tooltipImages[0].image.width);
         for (const id of [replacement ? 'live-replacement-B' : '97dd2fde-fd7f-46e2-bb2d-7b686993880f', '2200ad5e-671e-42e3-835b-93cbcc338fae']) {
           assert.ok(result.calls.some(call => call[0] === childParams.inlineImages.find(entry => entry.id === id).image.path));
         }
