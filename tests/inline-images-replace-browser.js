@@ -45,6 +45,118 @@ window.runPapijoInlineImageReplacement = async function (h) {
   }
   function submit(state) { state.$form[0].dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); }
   function cancel(state) { state.$form.find('button[type="button"]').last()[0].click(); }
+  function pickerControls(state) {
+    assert(state.$form[0].contains(state.$status[0]) && state.$status.is(':visible') &&
+      state.$controls.find('.papijo-inline-image-insert').length === 0,
+      'Picker errors belong inside the open form; no external insertion control');
+    assert(state.imageWidget.field.disableCopyright === true &&
+      state.$image.find('.h5p-editing-image-button, .h5p-copyright-button').length === 0,
+      'Managed Insert/Replace must omit both generic controls, including after file selection');
+    assert(state.imageWidget.$editImage.length === 1 && !state.imageWidget.$editImage[0].isConnected &&
+      !H5PEditor.$.hasData(state.imageWidget.$editImage[0]),
+      'Only the local edit-image trigger must be detached, with its DOM listeners removed');
+  }
+  async function checkPickerControls() {
+    var $ = H5PEditor.$;
+    for (var language of ['en', 'fr']) {
+      var strings = (await fetch('/language/' + language + '.json').then(function (r) { return r.json(); })).libraryStrings;
+      H5PEditor.t = function (_library, key) { return strings[key] || key; };
+      var ctx = await open(null, language);
+      var peer = await open(null, language);
+      await h.selectImage(peer);
+      Array.from(peer.editor.plugins.get('ContextualBalloon').visibleView.items)
+        .find(function (item) { return item.papijoManagedImageButton; }).element.click();
+      var peerState = peer.widget.inlineImageUi;
+      var peerWidget = peerState.imageWidget;
+      pickerControls(peerState);
+      // Ordinary native H5P image widgets must retain both controls.
+      var $ordinary = $('<div>').appendTo('#fixture');
+      var ordinary = new H5PEditor.widgets.image({ library: 'H5P.Other', ready: function (fn) { fn(); } },
+        { name: 'image', type: 'image' }, JSON.parse(JSON.stringify(A.image)), function () {});
+      ordinary.appendTo($ordinary);
+      assert($ordinary.find('.h5p-editing-image-button:not(.hidden), .h5p-copyright-button:not(.hidden)').length === 2,
+        'Ordinary H5P image widget must still expose both generic controls');
+      // Exercise the unchanged tooltip policy with the same installed image widget.
+      ctx.widget.tooltipImageDraft = JSON.parse(JSON.stringify(A.image));
+      ctx.widget.tooltipFormMode = 'create';
+      ctx.widget.mountTooltipImageWidget();
+      assert(ctx.widget.tooltipImageWidget.field.disableCopyright === true &&
+        ctx.widget.$tooltipImageField.find('.h5p-editing-image-button, .h5p-copyright-button').length === 0 &&
+        ctx.widget.$tooltipImageField.find('.thumbnail img').length === 1,
+        'Tooltip image suppression and native preview must remain unchanged');
+      ctx.widget.destroyTooltipImageWidget(); ctx.widget.tooltipFormMode = null;
+      for (var mode of ['insert', 'replace']) {
+        var listenerCount;
+        for (var cycle = 0; cycle < 4; cycle++) {
+          var before = ctx.editor.getData();
+          var definitions = JSON.stringify(ctx.store.params);
+          var state;
+          if (mode === 'replace') { state = await picker(ctx); }
+          else {
+            h.caret(ctx, 1);
+            Array.from(ctx.editor.ui.view.toolbar.items).find(function (item) { return item.papijoManagedImageButton; }).element.click();
+            state = ctx.widget.inlineImageUi;
+          }
+          pickerControls(state);
+          assert(state.$image.children().length === 1 && state.$controls.find('form').length === 1 && state.$alt.val() === '',
+            'Repeated picker opening must keep one native widget/form and fresh ALT');
+          var count = [state.$form[0], state.$form.find('button[type="button"]').last()[0]]
+            .reduce(function (total, element) {
+              var events = $._data(element, 'events') || {};
+              return total + Object.keys(events).reduce(function (sum, event) { return sum + events[event].length; }, 0);
+            }, 0);
+          if (listenerCount === undefined) { listenerCount = count; }
+          assert(count === listenerCount, 'Repeated picker cycles must not accumulate control listeners');
+          var imageWidget = state.imageWidget;
+          var lateCallback = imageWidget.setValue;
+          var selections = 0;
+          // Stub only file transport; click the real native Add/Change control,
+          // render its real preview and deliver its native upload lifecycle events.
+          imageWidget.openFileSelector = function () {
+            selections++;
+            this.trigger('upload');
+            this.params = JSON.parse(JSON.stringify(B));
+            this.setValue(this.field, this.params);
+            this.addFile();
+            this.trigger('fileUploaded', { width: B.width, height: B.height });
+          };
+          state.$image.find('.add')[0].click();
+          var preview = state.$image.find('.thumbnail img')[0];
+          await preview.decode();
+          assert(selections === 1 && preview.naturalWidth === 1280 && state.draft.path === B.path,
+            'Native Add must still select/upload and display the managed draft preview');
+          pickerControls(state);
+          state.$alt.val('Previous draft description');
+          state.$image.find('.thumbnail')[0].click();
+          assert(selections === 2 && state.$alt.val() === 'Previous draft description', 'Native Change remains usable');
+          pickerControls(state);
+          state.$alt.val('  '); submit(state);
+          assert(state.open && state.$status.text() === strings.enterImageAltText && ctx.editor.getData() === before &&
+            JSON.stringify(ctx.store.params) === definitions, 'Required ALT remains localized and blocks empty submissions');
+          if (cycle === 2) {
+            state.$alt.val('Explicit managed description'); submit(state);
+            assert(!state.open && ctx.editor.getData() !== before, 'Insert/Replace with explicit ALT must still apply');
+            ctx.editor.execute('undo');
+            assert(ctx.editor.getData() === before, 'Insert/Replace remains undoable');
+          }
+          else {
+            cancel(state);
+            assert(ctx.editor.getData() === before && JSON.stringify(ctx.store.params) === definitions,
+              'Cancel must leave managed content/definitions unchanged');
+          }
+          assert(state.imageWidget === null && state.$image.children().length === 0 && state.$controls.prop('hidden') && state.$status.text() === '' &&
+            !imageWidget.$item[0].isConnected &&
+            document.activeElement === ctx.editor.editing.view.getDomRoot(), 'Close must remove widget UI and restore editing focus');
+          lateCallback({ name: 'image' }, { path: 'images/stale.png' });
+          assert(state.draft === undefined && peerState.open && peerState.imageWidget === peerWidget &&
+            peerState.draft === undefined, 'Closed callbacks and other AdvancedText instances must remain isolated');
+        }
+      }
+      cancel(peerState); ordinary.remove(); $ordinary.remove();
+      await h.close(peer); await h.close(ctx);
+    }
+    h.results.push('Managed picker controls: Insert/Replace omit Edit image/copyright, native Add/Change/upload preview, required ALT/apply/cancel/focus, repeated lifecycle/listeners and instance isolation, en/fr, unchanged tooltip and ordinary H5P widgets');
+  }
   function clean(ctx) {
     var html = ctx.editor.getData().replace(/data-papijo-inline-image-style=/g, 'presentation=');
     assert(!/src=|alt=|width=|height=|image-style-|style=|<img|<figure/.test(html), 'Only managed marker attributes may persist');
@@ -62,6 +174,8 @@ window.runPapijoInlineImageReplacement = async function (h) {
   var originalTranslate = H5PEditor.t;
   H5P.getPath = function (path) { return path.includes('b.svg') ? '/fixture-large.svg' : '/fixture-image.png'; };
   try {
+    await checkPickerControls();
+    H5PEditor.t = originalTranslate;
     for (var style of [null, 'alignLeft', 'alignRight']) {
       var ctx = await open(style);
       var before = ctx.editor.getData(); var definitions = JSON.stringify(ctx.store.params);
@@ -197,8 +311,8 @@ window.runPapijoInlineImageReplacement = async function (h) {
         if (window.innerWidth === 160) {
           assert(rect.width <= 144 && new Set(Array.from(toolbar.items).filter(function (item) {
             return item.element.tagName === 'BUTTON';
-          }).map(function (item) { return Math.round(item.element.getBoundingClientRect().top); })).size === 2,
-          'Insufficient viewport must use native two-row contextual layout');
+          }).map(function (item) { return Math.round(item.element.getBoundingClientRect().top); })).size >= 2,
+          'Insufficient viewport must wrap all seven controls into native contextual rows');
         }
       }
       clean(ctx); await h.close(ctx);

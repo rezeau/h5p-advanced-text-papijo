@@ -46,6 +46,12 @@ optional URL belongs to each occurrence, independently of shared definitions,
 ALT and wrapping. Runtime creates a validated semantic anchor around the managed
 image. See the [Image Link report and manual checklist](tests/INLINE-IMAGES-LINK.md).
 
+Image Resize Phase 1 adds four corner handles, keyboard percentage adjustment
+and Reset size. Width belongs to each occurrence, remains responsive to its
+local region, preserves aspect ratio, and cannot upscale beyond intrinsic size.
+Default and explicit 100% are distinct; wrapping, links, ALT and replacement
+preserve width. See the [Resize report and manual checklist](tests/INLINE-IMAGES-RESIZE.md).
+
 Tooltip images are stored in the optional root `tooltipImages` semantic list.
 The annotated span contains only the sanitized tooltip text and, when needed,
 `data-papijo-tooltip-id`; image URLs and markup are never stored in the text

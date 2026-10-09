@@ -73,6 +73,7 @@
   <script src="/ckeditor.js"></script>
   <script src="/h5peditor-html.js"></script>
   <script src="/advanced-text-papijo-tooltip-selection.js"></script>
+  <script src="/advanced-text-papijo-inline-image-resize.js"></script>
   <script src="/advanced-text-papijo-inline-image.js"></script>
   <script src="/advanced-text-papijo-tooltip.js"></script>
 </head>
@@ -216,6 +217,8 @@
         const panelOne = $('#panel-one .advanced-text-item');
         const widgetOne = createWidget(panelOne, '<p>First nested editor</p>');
         widgetOne.addTooltipAuthoringControls();
+        assert(widgetOne.$tooltipControls.prop('hidden'), 'Nested tooltip controls must start hidden before initialization');
+        assert(panelOne.find('.papijo-inline-image-insert').length === 0, 'Nested field has no obsolete Insert image button');
         assert(autocompleteMethodCalls === 0, 'Tooltip input invoked jQuery autocomplete');
         assert(panelOne.find('.papijo-tooltip-authoring-controls').length === 1, 'First controls were not added');
         assert(panelOne.find('.papijo-tooltip-authoring-input').attr('autocomplete') === undefined, 'Tooltip input retained autocomplete configuration');
@@ -223,6 +226,7 @@
           widgetOne,
           panelOne.find('.editor-host')[0]
         );
+        assert(!widgetOne.$tooltipControls.prop('hidden'), 'Nested ready editor reveals tooltip controls');
         record('nested editor initializes without autocomplete call');
 
         widgetOne.addTooltipAuthoringControls();
@@ -260,7 +264,10 @@
         record('Accordion list item removal and creation lifecycle');
 
         await editorTwo.destroy();
+        assert(widgetTwo.$tooltipControls.prop('hidden') && !widgetThree.$tooltipControls.prop('hidden'),
+          'Destroying one nested editor hides only its own controls');
         await editorThree.destroy();
+        assert(widgetThree.$tooltipControls.prop('hidden'), 'Nested replacement destruction hides its controls');
         delete $.fn.autocomplete;
 
         document.getElementById('result').textContent = JSON.stringify({

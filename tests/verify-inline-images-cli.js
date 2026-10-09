@@ -52,9 +52,16 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
         'http://example.com/Y' : 'https://example.com/X?q=1&amp;b=2#details') + '"');
     cases.push([route, contentId, type, params, replacement, true]);
   }
+  for (const [route, contentId, type, original, replacement, linked] of cases.slice()) {
+    const params = JSON.parse(JSON.stringify(original));
+    const text = type === 'AdvancedTextPapiJo' ? params : type === 'AccordionPapiJo' ? params.panels[0].content.params : params.content[0].content.params;
+    text.text = text.text.replace(/data-papijo-inline-image-id="([^"]+)"/g, (attribute, id) =>
+      attribute + ' data-papijo-inline-image-width="' + (id === '2200ad5e-671e-42e3-835b-93cbcc338fae' ? '70' : '55.5') + '"');
+    cases.push([route, contentId, type, params, replacement, linked, true]);
+  }
   const browser = await chromium.launch({ channel: process.env.PAPIJO_BROWSER_CHANNEL || 'msedge', headless: true });
   try {
-    for (const [route, contentId, type, params, replacement, linked] of cases) {
+    for (const [route, contentId, type, params, replacement, linked, resized] of cases) {
       const page = await browser.newPage();
       try {
         await page.route('**/*', route => ['GET', 'HEAD'].includes(route.request().method()) ? route.continue() : route.abort());
@@ -73,7 +80,7 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
             await frame.addScriptTag({ path: path.join(root, file) });
           }
         }
-        const result = await frame.evaluate(async ({ contentId, type, params, linked }) => {
+        const result = await frame.evaluate(async ({ contentId, type, params, linked, resized }) => {
           const calls = []; const getPath = H5P.getPath;
           H5P.getPath = function (imagePath, id) { calls.push([imagePath, id]); return getPath.apply(this, arguments); };
           const $root = H5P.jQuery('<div>').appendTo(document.body);
@@ -97,6 +104,15 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
                   getComputedStyle(marker).float !== side) { throw Error('Occurrence must wrap ' + side); }
               if (textRoot.getBoundingClientRect().bottom < marker.getBoundingClientRect().bottom - 1) {
                 throw Error('AdvancedText height must include the floated marker');
+              }
+              if (resized) {
+                const bounds = images[index].getBoundingClientRect();
+                if (!marker.classList.contains('papijo-inline-image-sized') ||
+                    !marker.style.getPropertyValue('--papijo-image-width') || bounds.width > images[index].naturalWidth + 0.5 ||
+                    bounds.width > textRoot.clientWidth + 0.5 ||
+                    Math.abs(bounds.width / bounds.height - images[index].naturalWidth / images[index].naturalHeight) > 0.02) {
+                  throw Error('Live resized image must preserve local bounds, intrinsic cap and aspect ratio');
+                }
               }
             }
             if (linked) {
@@ -127,7 +143,7 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
             trigger.click(); return output;
           }
           finally { H5P.getPath = getPath; $root.remove(); }
-        }, { contentId, type, params, linked });
+        }, { contentId, type, params, linked, resized });
         assert.deepEqual(result.widths, replacement ? [460, 460] : [425, 460]); assert.equal(result.tooltipWidth, 320);
         assert.ok(result.calls.every(call => call[1] === contentId));
         const childParams = type === 'AdvancedTextPapiJo' ? params : type === 'AccordionPapiJo' ? params.panels[0].content.params : params.content[0].content.params;
@@ -135,7 +151,7 @@ const { sourceParams, clipboard } = require('./h5p-inline-image-copy-fixtures');
           assert.ok(result.calls.some(call => call[0] === childParams.inlineImages.find(entry => entry.id === id).image.path));
         }
         if (replacement) { assert.ok(childParams.inlineImages.find(entry => entry.id === '97dd2fde-fd7f-46e2-bb2d-7b686993880f'), 'Inactive A must remain retained'); }
-        console.log('LIVE CLI ' + (linked ? 'LINK ' : '') + (replacement ? 'REPLACEMENT ' : '') + 'PASS ' + JSON.stringify(result));
+        console.log('LIVE CLI ' + (resized ? 'RESIZE ' : '') + (linked ? 'LINK ' : '') + (replacement ? 'REPLACEMENT ' : '') + 'PASS ' + JSON.stringify(result));
       }
       finally { await page.close(); }
     }

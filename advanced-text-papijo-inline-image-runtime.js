@@ -51,6 +51,12 @@
       else { marker.removeAttribute(managed.linkAttribute); }
       // Clear untrusted marker children even when the definition is missing.
       marker.textContent = '';
+      // Sizing comes exclusively from the numeric marker contract.
+      marker.removeAttribute('style');
+      marker.classList.remove(managed.sizeClass);
+      var width = managed.normalizeWidth(marker.getAttribute(managed.widthAttribute));
+      if (width === null) { marker.removeAttribute(managed.widthAttribute); }
+      else { marker.setAttribute(managed.widthAttribute, String(width)); }
       marker.classList.remove(managed.styleClass('alignLeft'), managed.styleClass('alignRight'));
       if (!url) {
         return;
@@ -65,12 +71,19 @@
       }
       var resize = function () {
         if (self.root.contains(image)) {
+          if (width !== null && image.naturalWidth) {
+            marker.style.setProperty('--papijo-image-natural-width', image.naturalWidth + 'px');
+          }
           self.onResize();
         }
       };
       image.addEventListener('load', resize);
       image.addEventListener('error', resize);
       self.records.push({ image: image, marker: marker, resize: resize });
+      if (width !== null) {
+        marker.classList.add(managed.sizeClass);
+        marker.style.setProperty('--papijo-image-width', width + '%');
+      }
       image.src = url;
       if (href) {
         var anchor = marker.ownerDocument.createElement('a');
@@ -80,6 +93,8 @@
         marker.appendChild(anchor);
       }
       else { marker.appendChild(image); }
+      // A cached image may already expose intrinsic dimensions before load fires.
+      if (image.complete && image.naturalWidth) { resize(); }
     });
     this.root.classList.toggle(managed.floatRootClass, floating);
     if (floating) {
@@ -98,6 +113,9 @@
       record.image.removeEventListener('load', record.resize);
       record.image.removeEventListener('error', record.resize);
       record.marker.classList.remove(managed.styleClass('alignLeft'), managed.styleClass('alignRight'));
+      record.marker.classList.remove(managed.sizeClass);
+      record.marker.style.removeProperty('--papijo-image-width');
+      record.marker.style.removeProperty('--papijo-image-natural-width');
     });
     this.records = [];
     if (this.flowRoot && this.flowRoot.parentNode === this.root) {

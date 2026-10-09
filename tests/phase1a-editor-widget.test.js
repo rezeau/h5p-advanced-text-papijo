@@ -302,6 +302,7 @@ test('declares the widget, span tag, dependency, and release versions', () => {
   ]);
   assert.deepEqual(editorLibrary.preloadedJs, [
     { path: 'advanced-text-papijo-inline-images.js' },
+    { path: 'advanced-text-papijo-inline-image-resize.js' },
     { path: 'advanced-text-papijo-inline-image.js' },
     { path: 'advanced-text-papijo-tooltip-sanitizer.js' },
     { path: 'advanced-text-papijo-tooltip-selection.js' },

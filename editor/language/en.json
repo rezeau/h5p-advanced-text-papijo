@@ -1,5 +1,12 @@
 {
   "libraryStrings": {
+    "resetImageSize": "Reset size",
+    "resizeHandlenorthWest": "Resize image from top left",
+    "resizeHandlenorthEast": "Resize image from top right",
+    "resizeHandlesouthWest": "Resize image from bottom left",
+    "resizeHandlesouthEast": "Resize image from bottom right",
+    "imageSizeDefault": "Default size",
+    "imageResizeKeys": "Arrow keys: 0.1 percent; Shift and arrow: 5 percent; Escape or Shift+Tab: return to image; Tab: next field",
     "linkInlineImage": "Link image",
     "enterValidImageLink": "Enter an absolute HTTP or HTTPS URL without credentials.",
     "imageLinkTargetUnavailable": "The selected image is no longer available or editable. Close the link form and select the image again.",
@@ -9,7 +16,6 @@
     "applyReplacementImage": "Replace image",
     "replacementTargetUnavailable": "The image to replace is no longer available or editable. Close the picker and select the image again.",
     "inlineImageUnavailable": "Image unavailable",
-    "placeInlineImageCursor": "Place the cursor in the text before inserting an image.",
     "chooseManagedInlineImage": "Choose an uploaded image with a valid managed path.",
     "createTooltip": "Create tooltip",
     "editTooltip": "Edit tooltip",

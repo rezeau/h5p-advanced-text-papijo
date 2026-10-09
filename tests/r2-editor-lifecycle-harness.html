@@ -34,6 +34,7 @@
   <script src="/advanced-text-papijo-tooltip-sanitizer.js"></script>
   <script src="/advanced-text-papijo-tooltip-selection.js"></script>
   <script src="/advanced-text-papijo-inline-images.js"></script>
+  <script src="/advanced-text-papijo-inline-image-resize.js"></script>
   <script src="/advanced-text-papijo-inline-image.js"></script>
   <script src="/advanced-text-papijo-tooltip.js"></script>
 </head>
@@ -99,6 +100,7 @@
         widget.$input = $(host);
         widget.$errors = $('<div>');
         widget.addTooltipAuthoringControls();
+        assert(!widget.$tooltipControls.prop('hidden'), 'Controls appended after ready must reveal immediately');
         return { editor: editor, host: host, widget: widget, $item: $item };
       }
 
@@ -117,7 +119,52 @@
         $button.trigger('click');
       }
 
+      async function checkInitialVisibility() {
+        const $wrapper = $('<div>').appendTo(fixture);
+        const widget = createWidget('<p>Before activation</p>');
+        widget.appendTo($wrapper);
+        assert(!widget.inlineImageUi && $wrapper.find('.papijo-inline-image-insert, .papijo-inline-image-controls').length === 0,
+          'Before activation there must be no external image button, picker status or idle UI');
+        assert(widget.$tooltipControls.prop('hidden') && !widget.$tooltipControls.is(':visible') &&
+          widget.$tooltipStatus.text() === '', 'Complete tooltip wrapper starts hidden and empty');
+        widget.$createTooltipButton.trigger('click');
+        assert(!widget.$tooltipControls.is(':visible'), 'Pre-init guidance cannot become visible');
+        widget.$input[0].focus();
+        for (let i = 0; i < 100 && (!widget.ckeditor || widget.ckeditor.state !== 'ready'); i++) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        const editor = widget.ckeditor;
+        assert(editor && editor.state === 'ready' && !widget.$tooltipControls.prop('hidden'), 'Actual H5P focus initializes and reveals owned tooltip UI');
+        assert($wrapper.find('.papijo-inline-image-insert, .papijo-inline-image-controls').length === 0,
+          'Ready does not recreate obsolete external image UI');
+        setSelection(editor, 0, 6);
+        assert(!widget.$createTooltipButton.prop('hidden'), 'Valid text selection exposes Create tooltip');
+        triggerButton(widget.$createTooltipButton);
+        assert(!widget.$tooltipForm.prop('hidden'), 'Create tooltip remains usable after initialization');
+        await editor.destroy();
+        H5PEditor.Html.current = undefined;
+        assert(widget.$tooltipControls.prop('hidden') && widget.$tooltipForm.prop('hidden') &&
+          widget.tooltipSelectionEditor === null && widget.preservedTooltipSelection === null &&
+          widget.tooltipFormMode === null && widget.$tooltipStatus.text() === '', 'Destroy hides and releases tooltip form/selection/guidance');
+        // WordPress can retain the destroyed reference; it must not reveal controls.
+        widget.ckeditor = editor;
+        widget.addTooltipAuthoringControls();
+        assert(widget.$tooltipControls.prop('hidden'), 'Destroyed editor truthiness is not readiness');
+        document.activeElement.blur(); widget.$input[0].focus();
+        for (let i = 0; i < 100 && (!widget.ckeditor || widget.ckeditor.state !== 'ready'); i++) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        const recreated = widget.ckeditor;
+        assert(recreated !== editor && recreated.state === 'ready' && !widget.$tooltipControls.prop('hidden'), 'Same field recreation reveals its new live editor');
+        setSelection(recreated, 0, 6);
+        assert(!widget.$createTooltipButton.prop('hidden'), 'Recreated editor refreshes selection state');
+        await recreated.destroy(); H5PEditor.Html.current = undefined;
+        widget.remove(); $wrapper.remove();
+        record('actual H5P initial/ready/destroy/recreate visibility and retained WordPress reference');
+      }
+
       try {
+        await checkInitialVisibility();
         const original = await createContext('<p>Original editor text</p>');
         original.widget.r2RefreshCount = 0;
         setSelection(original.editor, 0, 8);
@@ -138,6 +185,9 @@
         record('repeated binding remains single-listener');
 
         const oldEditor = original.editor;
+        const staleReady = original.widget.tooltipEditorReadyHandler;
+        const staleDestroy = original.widget.tooltipEditorDestroyHandler;
+        const staleSelection = original.widget.tooltipSelectionChangeHandler;
         const $oldItem = original.$item.detach();
         const $oldCreateButton = original.widget.$createTooltipButton;
         const $oldForm = original.widget.$tooltipForm;
@@ -170,6 +220,11 @@
           replacement.widget.r2RefreshCount === 1,
           'Replacement editor did not receive exactly one listener'
         );
+        const currentOwner = replacement.widget.tooltipSelectionEditor;
+        staleReady(); staleDestroy(); staleSelection();
+        assert(replacement.widget.tooltipSelectionEditor === currentOwner &&
+          !replacement.widget.$tooltipControls.prop('hidden') && !replacement.widget.$createTooltipButton.prop('hidden'),
+          'Stale lifecycle callbacks must not hide or release a replacement editor');
         record('replacement editor receives one listener');
 
         $oldCreateButton.trigger('click');
@@ -294,7 +349,7 @@
         $accordion.remove();
         $appendWrapper.remove();
 
-        assert(results.length === 11, 'Expected 11 R2 results, got ' + results.length);
+        assert(results.length === 12, 'Expected 12 R2 results, got ' + results.length);
         document.getElementById('result').textContent = JSON.stringify({
           status: 'PASS', count: results.length, results: results
         }, null, 2);

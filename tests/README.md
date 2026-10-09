@@ -212,3 +212,10 @@ The copy test retains the existing CLI content/library fixtures, uses the
 selected actual PHP core/editor methods, and writes only isolated temporary
 storage which it removes afterward. These temporary content exports exercise
 the lifecycle; they are not development-library packages for installation.
+
+Image Resize Phase 1 adds five Node tests and `inline-images-resize-browser.js`
+to the native image route. The runner now tests 1280/480/320/160px on both hosts,
+with real captured mouse gestures and keyboard events. PHP adds a width filter
+group and four resize save/export/reimport cases; live CLI adds 20 resized cases.
+All editor harnesses load the new declared local controller before its adapter.
+See [the Resize report/checklist](INLINE-IMAGES-RESIZE.md) for coverage and limits.

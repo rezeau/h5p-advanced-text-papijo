@@ -24,7 +24,13 @@
     };
     window.ns = H5PEditor;
     // Exercise the installed H5P image widget, with its transport/popup services stubbed.
-    H5PEditor.File = function () { this.on = function () {}; };
+    H5PEditor.File = function () {
+      var listeners = {};
+      this.on = function (event, callback) { (listeners[event] || (listeners[event] = [])).push(callback); };
+      this.trigger = function (event, data) {
+        (listeners[event] || []).forEach(function (callback) { callback({ data: data }); });
+      };
+    };
     H5PEditor.File.prototype.remove = function () { if (this.$item) { this.$item.remove(); } };
     H5PEditor.File.addCopyright = function () {};
     H5PEditor.ImageEditingPopup = function () { this.on = function () {}; };
@@ -43,6 +49,7 @@
   <script src="/h5peditor-html.js"></script>
   <script src="/h5peditor-image.js"></script>
   <script src="/advanced-text-papijo-inline-images.js"></script>
+  <script src="/advanced-text-papijo-inline-image-resize.js"></script>
   <script src="/advanced-text-papijo-inline-image.js"></script>
   <script src="/advanced-text-papijo-tooltip-sanitizer.js"></script>
   <script src="/advanced-text-papijo-tooltip-selection.js"></script>
@@ -55,6 +62,7 @@
   <script src="/inline-images-phase3-browser.js"></script>
   <script src="/inline-images-replace-browser.js"></script>
   <script src="/inline-images-link-browser.js"></script>
+  <script src="/inline-images-resize-browser.js"></script>
 </head>
 <body class="h5peditor">
   <div id="fixture"></div>
@@ -86,7 +94,9 @@
         var editor = await ClassicEditor.create(widget.$input[0], config);
         widget.ckeditor = editor;
         widget.addTooltipAuthoringControls();
-        feature.controls(widget);
+        assert(!widget.$tooltipControls.prop('hidden'), 'Controls added after editor ready must become available');
+        assert($shell.find('.papijo-inline-image-insert, .papijo-inline-image-controls').length === 0,
+          'No external Insert image control or idle instruction area after ready');
         return { widget: widget, editor: editor, store: store, params: params, shell: $shell };
       }
       async function close(ctx) { ctx.widget.remove(); await ctx.editor.destroy(); ctx.shell.remove(); }
@@ -103,6 +113,8 @@
         if (!toolbar.element.contains(button)) { toolbar._behavior.groupedItemsDropdown.buttonView.element.click(); }
         button.click();
         var state = ctx.widget.inlineImageUi;
+        assert(state.$form[0].contains(state.$status[0]) && state.$status.is(':visible'), 'Picker errors must live inside the open form');
+        assert(ctx.shell.find('.papijo-inline-image-insert').length === 0, 'Toolbar opens picker directly without an external button');
         assert(state.imageWidget instanceof H5PEditor.widgets.image, 'Must use normal installed H5P image widget');
         state.imageWidget.setValue({ name: 'image' }, image);
         state.$alt.val(alt);
@@ -124,7 +136,7 @@
         var balloon = ctx.editor.plugins.get('ContextualBalloon');
         var toolbar = balloon.visibleView;
         assert(toolbar && toolbar.element.querySelector('button[data-cke-tooltip-text="Change image text alternative"]'), 'Native image toolbar must appear');
-        assert(toolbar.items.length === 7, 'Image toolbar must have three styles, separator, replace, link and alt');
+        assert(toolbar.items.length === 8, 'Image toolbar must have three styles, separator, replace, link, alt and reset');
         toolbar.element.querySelector('button[data-cke-tooltip-text="Change image text alternative"]').click();
         var form = balloon.visibleView;
         assert(form.element.classList.contains('ck-text-alternative-form'), 'Must use the native alternative text form');
@@ -133,6 +145,34 @@
       function submitAlt(form, value) {
         form.labeledInput.fieldView.element.value = value;
         form.element.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }
+      async function checkPickerRecreation() {
+        var ctx = await open('<p>First editor</p>');
+        apply(ctx, { path: 'images/cancel.png' }, '');
+        var state = ctx.widget.inlineImageUi;
+        var staleUpload = state.imageWidget.setValue;
+        var old = ctx.editor;
+        var host = H5PEditor.$('<div>').html('<p>New editor</p>').appendTo(ctx.shell);
+        var next = await ClassicEditor.create(host[0], ctx.widget.getCKEditorConfig());
+        ctx.editor = next; ctx.widget.ckeditor = next; ctx.widget.$input = host;
+        next.editing.view.focus();
+        apply(ctx, { path: 'images/current.png' }, '');
+        var currentPicker = state.imageWidget;
+        var currentDraft = JSON.stringify(state.draft);
+        await old.destroy();
+        staleUpload({ name: 'image' }, { path: 'images/stale.png' });
+        assert(state.open && state.imageWidget === currentPicker && JSON.stringify(state.draft) === currentDraft &&
+          !ctx.widget.$tooltipControls.prop('hidden'), 'Old editor destroy/upload must not affect the replacement editor picker or tooltip UI');
+        state.$form.find('button[type="button"]').last()[0].click();
+        assert(!state.open && state.$controls.prop('hidden') && state.$status.text() === '' &&
+          document.activeElement === next.editing.view.getDomRoot(), 'Cancel hides validation area and restores current editor focus');
+        apply(ctx, { path: 'images/recreated.png' }, 'Recreated image');
+        assert(imageModel(ctx).getAttribute('alt') === 'Recreated image', 'Toolbar insertion works after picker recreation');
+        await next.destroy();
+        assert(!state.open && state.imageWidget === null && state.$controls.prop('hidden') &&
+          ctx.widget.$tooltipControls.prop('hidden'), 'Current editor destruction releases and hides both authoring UIs');
+        ctx.widget.remove(); ctx.shell.remove();
+        results.push('Direct toolbar picker, local validation, recreation, old destroy/upload guards, Cancel/focus');
       }
       async function checkToolbarVisibility(ctx) {
         var editor = ctx.editor;
@@ -253,6 +293,7 @@
         }
       }
       try {
+        await checkPickerRecreation();
         await checkContentCopies();
         await runPapijoInlineImagePhase3({ open: open, close: close, apply: apply, caret: caret,
           imageModel: imageModel, selectImage: selectImage, altForm: altForm,
@@ -260,6 +301,8 @@
         await runPapijoInlineImageReplacement({ open: open, close: close, apply: apply, caret: caret,
           imageModel: imageModel, selectImage: selectImage, altForm: altForm,
           submitAlt: submitAlt, assert: assert, results: results });
+        await runPapijoInlineImageResize({ open: open, close: close, apply: apply, caret: caret,
+          selectImage: selectImage, imageModel: imageModel, assert: assert, results: results });
         await runPapijoInlineImageLinks({ open: open, close: close, apply: apply, caret: caret,
           imageModel: imageModel, selectImage: selectImage, altForm: altForm,
           submitAlt: submitAlt, assert: assert, results: results });

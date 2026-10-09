@@ -187,9 +187,14 @@ function fixture(ids) {
     return image;
   } };
   const markers = ids.map(id => ({ ownerDocument, classList: classes(),
-    getAttribute(name) { return name === managed.attribute ? id : name === managed.styleAttribute ? this.style : this.link || null; },
-    setAttribute(name, value) { assert.equal(name, managed.linkAttribute); this.link = value; },
-    removeAttribute(name) { assert.equal(name, managed.linkAttribute); this.link = undefined; },
+    style: { setProperty() {}, removeProperty() {} },
+    getAttribute(name) { return name === managed.attribute ? id : name === managed.styleAttribute ? this.occurrenceStyle : name === managed.widthAttribute ? this.width || null : this.link || null; },
+    setAttribute(name, value) { if (name === managed.widthAttribute) { this.width = value; } else { assert.equal(name, managed.linkAttribute); this.link = value; } },
+    removeAttribute(name) {
+      if (name === 'style') { return; }
+      if (name === managed.widthAttribute) { this.width = undefined; return; }
+      assert.equal(name, managed.linkAttribute); this.link = undefined;
+    },
     appendChild(image) { this.image = image; } }));
   const root = Object.assign(node(), { ownerDocument, markers, images, classList: classes(), querySelectorAll(selector) {
     assert.equal(selector, 'span.papijo-inline-image[data-papijo-inline-image-id]');
@@ -201,9 +206,9 @@ function fixture(ids) {
 
 test('runtime presentation is occurrence-local, allowlisted, contained, and reset on destroy', () => {
   const root = fixture(['shared', 'shared', 'shared']);
-  root.markers[0].style = 'alignLeft';
-  root.markers[1].style = 'alignRight';
-  root.markers[2].style = 'alignCenter';
+  root.markers[0].occurrenceStyle = 'alignLeft';
+  root.markers[1].occurrenceStyle = 'alignRight';
+  root.markers[2].occurrenceStyle = 'alignCenter';
   root.markers[2].classList.add('papijo-inline-image-wrap-left');
   const entries = [definition('shared')];
   const before = JSON.stringify(entries);
@@ -222,7 +227,7 @@ test('runtime presentation is occurrence-local, allowlisted, contained, and rese
   assert.ok(!root.classList.contains(managed.floatRootClass));
   assert.deepEqual(root.children, root.markers, 'Destroy must unwrap content in its original order');
   assert.ok(!root.markers[0].classList.contains('papijo-inline-image-wrap-left'));
-  root.markers[0].style = undefined; root.markers[1].style = 'side';
+  root.markers[0].occurrenceStyle = undefined; root.markers[1].occurrenceStyle = 'side';
   runtime.initialize();
   assert.ok(!root.classList.contains(managed.floatRootClass));
 });

@@ -27,7 +27,7 @@ window.runPapijoInlineImagePhase3 = async function (h) {
     var title = ['In line', 'Left aligned image', 'Right aligned image'][index];
     assert(button.label === ctx.editor.t(title) && button.icon && button.tooltip &&
       button.element.querySelector('svg'), 'Native translated style icon/tooltip missing');
-    assert(toolbar.element.querySelectorAll('button').length === 6, 'Contextual toolbar has unexpected commands');
+    assert(toolbar.element.querySelectorAll('button').length === 7, 'Contextual toolbar has unexpected commands');
     button.element.click();
     assert(button.isOn, 'Native active style state missing');
   }
@@ -121,7 +121,9 @@ window.runPapijoInlineImagePhase3 = async function (h) {
       assert(toolbar.element.getBoundingClientRect().width <= ctx.shell[0].getBoundingClientRect().width,
         'Contextual image controls must fit the narrow editor width');
       Array.from(toolbar.items).filter(function (item) { return item.element.tagName === 'BUTTON'; }).forEach(function (button) {
-        assert(button.element.getAttribute('aria-labelledby') && !button.element.disabled, 'Native controls need accessible names and keyboard access');
+        assert(button.element.getAttribute('aria-labelledby') &&
+          (!button.element.disabled || button.label === H5PEditor.t('H5PEditor.AdvancedTextPapiJoTooltip', 'resetImageSize')),
+          'Native controls need accessible names; Reset is disabled at default size');
       });
       var item = Array.from(toolbar.items)[0]; item.focus();
       assert(document.activeElement === item.element, 'Native style button must accept keyboard focus');

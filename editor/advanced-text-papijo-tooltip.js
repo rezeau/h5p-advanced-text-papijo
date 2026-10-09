@@ -302,9 +302,6 @@
     // H5P displays the source field before creating CKEditor on focus.
     this.$input.addClass('papijo-advanced-text-editor');
     this.addTooltipAuthoringControls();
-    if (H5PEditor.AdvancedTextPapiJoInlineImage) {
-      H5PEditor.AdvancedTextPapiJoInlineImage.controls(this);
-    }
   };
 
   AdvancedTextPapiJoTooltip.prototype.validate = function () {
@@ -351,8 +348,14 @@
         this.tooltipSelectionChangeHandler
       );
     }
+    if (this.tooltipSelectionEditor) {
+      this.tooltipSelectionEditor.off('ready', this.tooltipEditorReadyHandler);
+      this.tooltipSelectionEditor.off('destroy', this.tooltipEditorDestroyHandler);
+    }
     this.tooltipSelectionEditor = null;
     this.tooltipSelectionChangeHandler = null;
+    this.tooltipEditorReadyHandler = null;
+    this.tooltipEditorDestroyHandler = null;
   };
 
   AdvancedTextPapiJoTooltip.prototype.bindTooltipSelectionUpdates = function (editor) {
@@ -363,8 +366,26 @@
     }
     self.unbindTooltipSelectionUpdates();
     self.tooltipSelectionEditor = editor;
+    self.tooltipEditorReadyHandler = function () {
+      if (self.tooltipSelectionEditor === editor && editor.state === 'ready') {
+        self.refreshTooltipActions(editor.model.document.selection);
+      }
+    };
+    self.tooltipEditorDestroyHandler = function () {
+      if (self.tooltipSelectionEditor !== editor) { return; }
+      self.unbindTooltipSelectionUpdates();
+      if (self.$tooltipForm) { self.closeTooltipForm(false); }
+      self.preservedTooltipSelection = null;
+      self.tooltipFormTooltipId = null;
+      if (self.$tooltipControls) { self.$tooltipControls.prop('hidden', true); }
+      if (self.$tooltipStatus) { self.$tooltipStatus.text(''); }
+    };
+    if (editor.state !== 'ready') { editor.once('ready', self.tooltipEditorReadyHandler); }
+    editor.once('destroy', self.tooltipEditorDestroyHandler);
     self.tooltipSelectionChangeHandler = function () {
-      self.refreshTooltipActions(editor.model.document.selection);
+      if (self.tooltipSelectionEditor === editor) {
+        self.refreshTooltipActions(editor.model.document.selection);
+      }
     };
     editor.model.document.selection.on(
       'change:range',
@@ -374,9 +395,10 @@
   };
 
   AdvancedTextPapiJoTooltip.prototype.refreshTooltipActions = function (selection) {
-    if (!this.$createTooltipButton || !this.tooltipSelectionEditor) {
-      return;
-    }
+    if (!this.$tooltipControls) { return; }
+    var ready = this.tooltipSelectionEditor && this.tooltipSelectionEditor.state === 'ready';
+    this.$tooltipControls.prop('hidden', !ready);
+    if (!ready) { return; }
     var detection = detectExistingTooltip(this.tooltipSelectionEditor, selection);
     var hasTooltip = detection.valid && detection.kind === 'tooltip';
     var canCreate = !hasTooltip && validateSelection(
@@ -575,7 +597,7 @@
       text: translate('removeTooltip'), hidden: true
     });
     self.$tooltipControls = H5PEditor.$('<div>', {
-      'class': 'papijo-tooltip-authoring-controls'
+      hidden: true, 'class': 'papijo-tooltip-authoring-controls'
     }).append(self.$createTooltipButton, self.$editTooltipButton,
       self.$tooltipForm, self.$tooltipStatus)
       .appendTo(self.$item);
@@ -706,7 +728,10 @@
     var $cancel = createTooltipAuthoringElements(self);
     bindTooltipActionHandlers(self);
     bindTooltipFormHandlers(self, $cancel);
-    if (self.ckeditor) {
+    if (self.tooltipSelectionEditor) {
+      self.refreshTooltipActions(self.tooltipSelectionEditor.model.document.selection);
+    }
+    else if (self.ckeditor && self.ckeditor.state === 'ready') {
       self.bindTooltipSelectionUpdates(self.ckeditor);
     }
   };

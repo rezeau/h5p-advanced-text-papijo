@@ -56,6 +56,22 @@
   margin-top: 0.5em;
   margin-bottom: 0.5em;
 }
+/* Only validated occurrence widths create these numeric properties. */
+.h5p-advanced-text .papijo-inline-image.papijo-inline-image-sized {
+  display: inline-block;
+  width: min(var(--papijo-image-width), var(--papijo-image-natural-width, 100%));
+  max-width: 100%;
+}
+.h5p-advanced-text .papijo-inline-image-sized.papijo-inline-image-wrap-left,
+.h5p-advanced-text .papijo-inline-image-sized.papijo-inline-image-wrap-right {
+  max-width: calc(100% - 0.75em);
+}
+.h5p-advanced-text .papijo-inline-image-sized > img,
+.h5p-advanced-text .papijo-inline-image-sized > .papijo-inline-image-link,
+.h5p-advanced-text .papijo-inline-image-sized > .papijo-inline-image-link > img {
+  width: 100%;
+  height: auto;
+}
 .h5p-advanced-text .papijo-inline-image-wrap-left {
   float: left;
   margin-right: 0.75em;

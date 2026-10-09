@@ -1,5 +1,12 @@
 {
   "libraryStrings": {
+    "resetImageSize": "Réinitialiser la taille",
+    "resizeHandlenorthWest": "Redimensionner l’image depuis le coin supérieur gauche",
+    "resizeHandlenorthEast": "Redimensionner l’image depuis le coin supérieur droit",
+    "resizeHandlesouthWest": "Redimensionner l’image depuis le coin inférieur gauche",
+    "resizeHandlesouthEast": "Redimensionner l’image depuis le coin inférieur droit",
+    "imageSizeDefault": "Taille par défaut",
+    "imageResizeKeys": "Flèches : 0,1 pour cent ; Maj et flèche : 5 pour cent ; Échap ou Maj+Tab : retour à l’image ; Tab : champ suivant",
     "linkInlineImage": "Lien d’image",
     "enterValidImageLink": "Saisissez une URL HTTP ou HTTPS absolue sans identifiants de connexion.",
     "imageLinkTargetUnavailable": "L’image sélectionnée n’est plus disponible ou modifiable. Fermez le formulaire du lien et sélectionnez de nouveau l’image.",
@@ -9,7 +16,6 @@
     "applyReplacementImage": "Remplacer l’image",
     "replacementTargetUnavailable": "L’image à remplacer n’est plus disponible ou modifiable. Fermez le sélecteur et sélectionnez de nouveau l’image.",
     "inlineImageUnavailable": "Image indisponible",
-    "placeInlineImageCursor": "Placez le curseur dans le texte avant d’insérer une image.",
     "chooseManagedInlineImage": "Choisissez une image téléversée avec un chemin géré valide.",
     "createTooltip": "Créer une infobulle",
     "editTooltip": "Modifier l’infobulle",

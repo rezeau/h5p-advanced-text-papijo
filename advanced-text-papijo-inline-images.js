@@ -6,6 +6,16 @@ var PapijoManagedInlineImages = (function () {
   var attribute = 'data-papijo-inline-image-id';
   var className = 'papijo-inline-image';
 
+  // A percentage is occurrence state, never file metadata or arbitrary CSS.
+  function normalizeWidth(value) {
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value) || Math.round(value * 10) / 10 !== value) { return null; }
+    }
+    else if (typeof value !== 'string' || !/^(?:0|[1-9][0-9]*)(?:\.[0-9])?$/.test(value)) { return null; }
+    var width = Number(value);
+    return width >= 0.1 && width <= 100 ? width : null;
+  }
+
   // Links belong to occurrences, independently of managed file definitions.
   // Validate again after DOM parsing; never decode/repair an unsupported scheme.
   function normalizeLink(value) {
@@ -130,9 +140,12 @@ var PapijoManagedInlineImages = (function () {
     className: className,
     styleAttribute: 'data-papijo-inline-image-style',
     linkAttribute: 'data-papijo-inline-image-link',
+    widthAttribute: 'data-papijo-inline-image-width',
+    sizeClass: 'papijo-inline-image-sized',
     floatRootClass: 'papijo-inline-image-floats',
     normalizeStyle: normalizeStyle,
     normalizeLink: normalizeLink,
+    normalizeWidth: normalizeWidth,
     styleClass: styleClass,
     createId: createId,
     validId: validId,

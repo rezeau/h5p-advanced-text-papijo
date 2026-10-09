@@ -204,6 +204,7 @@ try {
   // Linked occurrences retain the same semantic file lifecycle. Actual storage
   // and H5PExport run only in this test's unique temporary tree.
   $linkValidator = new H5PContentValidator($framework, null);
+  foreach (array('link', 'resize') as $feature) {
   foreach (array('standalone', 'accordion', 'column', 'book') as $container) {
     $destination++;
     $child = json_decode(json_encode($source));
@@ -217,6 +218,16 @@ try {
       '<span class="papijo-inline-image" data-papijo-inline-image-id="' . $A->id .
       '" data-papijo-inline-image-style="alignRight" data-papijo-inline-image-link="' . $Y . '"></span>' .
       '<span class="papijo-inline-image" data-papijo-inline-image-id="' . $A->id . '"></span></p>';
+    if ($feature === 'resize') {
+      $child->text = '<p>';
+      foreach (array(null, '30', '70', '100', '0.1', '55.5') as $index => $width) {
+        $child->text .= '<span class="papijo-inline-image" data-papijo-inline-image-id="' . ($index === 5 ? $B->id : $A->id) . '"' .
+          ($width === null ? '' : ' data-papijo-inline-image-width="' . $width . '"') .
+          ($index === 2 ? ' data-papijo-inline-image-link="' . $X . '"' : '') .
+          ($index === 5 ? ' data-papijo-inline-image-style="alignLeft" data-papijo-inline-image-link="' . $Y . '"' : '') . '></span>';
+      }
+      $child->text .= '</p>';
+    }
     $linkedHtml = $child->text;
     $linkValidator->validateText($child->text, $core->loadLibrarySemantics('H5P.AdvancedTextPapiJo', 1, 2)[0]);
     copyCheck($child->text === $linkedHtml, 'PHP filtering must preserve occurrence links/query/fragment');
@@ -259,9 +270,10 @@ try {
       copyCheck(hash_file('sha256', $temporary . '/content/' . ($destination + 500) . '/' . $entry->image->path) ===
         hash_file('sha256', $temporary . '/content/' . $destination . '/' . $entry->image->path), 'Retained linked/unlinked file bytes survive reimport');
     }
-    echo 'PHP IMAGE LINK FILTER/SAVE/RETAIN/EXPORT/REIMPORT PASS ' . $container . "\n";
+    echo 'PHP IMAGE ' . strtoupper($feature) . ' FILTER/SAVE/RETAIN/EXPORT/REIMPORT PASS ' . $container . "\n";
   }
-  copyCheck($framework->exports === 17, 'Original/replacement/link content exports must complete');
+  }
+  copyCheck($framework->exports === 21, 'Original/replacement/link/resize content exports must complete');
 }
 finally {
   // Only this test's unique temporary tree; never a site/content/library directory.

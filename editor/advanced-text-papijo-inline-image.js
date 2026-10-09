@@ -59,14 +59,10 @@
   }
 
   function install(editor, widget) {
-    editor.once('ready', function () {
-      if (widget.inlineImageUi) { widget.inlineImageUi.$button.prop('hidden', true); }
-    });
     editor.once('destroy', function () {
-      close(widget, false);
-      if (widget.inlineImageUi) { widget.inlineImageUi.$button.prop('hidden', false); }
+      if (widget.inlineImageUi && widget.inlineImageUi.editor === editor) { close(widget, false); }
     });
-    editor.model.schema.extend(modelName, { allowAttributes: ['inlineImageId', 'linkHref'] });
+    editor.model.schema.extend(modelName, { allowAttributes: ['inlineImageId', 'linkHref', 'papijoImageWidth'] });
     // Native surrounding-anchor upcast can run after the marker converter.
     // Carry its canonical choice to the first attached post-fix, not persistence.
     var importedLinks = new WeakMap();
@@ -106,6 +102,11 @@
         if (view.hasAttribute(managed.styleAttribute)) {
           api.consumable.consume(view, { attributes: [managed.styleAttribute] });
         }
+        var width = managed.normalizeWidth(view.getAttribute(managed.widthAttribute));
+        if (width !== null) { attributes.papijoImageWidth = width; }
+        if (view.hasAttribute(managed.widthAttribute)) {
+          api.consumable.consume(view, { attributes: [managed.widthAttribute] });
+        }
         var image = api.writer.createElement(modelName, attributes);
         importedLinks.set(image, href || null);
         return image;
@@ -113,7 +114,7 @@
       converterPriority: 'high'
     });
     editor.conversion.for('dataDowncast').elementToElement({
-      model: { name: modelName, attributes: ['inlineImageId', 'imageStyle', 'linkHref'] },
+      model: { name: modelName, attributes: ['inlineImageId', 'imageStyle', 'linkHref', 'papijoImageWidth'] },
       view: function (model, api) {
         var attributes = { 'class': managed.className };
         attributes[managed.attribute] = model.getAttribute('inlineImageId');
@@ -121,6 +122,8 @@
         if (style) { attributes[managed.styleAttribute] = style; }
         var href = managed.normalizeLink(model.getAttribute('linkHref'));
         if (href) { attributes[managed.linkAttribute] = href; }
+        var width = managed.normalizeWidth(model.getAttribute('papijoImageWidth'));
+        if (width !== null) { attributes[managed.widthAttribute] = String(width); }
         return api.writer.createEmptyElement('span', attributes);
       },
       converterPriority: 'high'
@@ -128,7 +131,8 @@
     editor.conversion.for('dataDowncast').add(function (dispatcher) {
       dispatcher.on('attribute', function (event, data, api) {
         if (data.item.is('element', modelName) &&
-            data.attributeKey !== 'inlineImageId' && data.attributeKey !== 'imageStyle' && data.attributeKey !== 'linkHref') {
+            data.attributeKey !== 'inlineImageId' && data.attributeKey !== 'imageStyle' &&
+            data.attributeKey !== 'linkHref' && data.attributeKey !== 'papijoImageWidth') {
           // Native src/alt/size handlers expect an img. Consume projections before
           // those handlers run: the data view deliberately contains only a span.
           api.consumable.consume(data.item, event.name);
@@ -190,6 +194,12 @@
           });
           if (item.hasAttribute('imageStyle') && !managed.normalizeStyle(item.getAttribute('imageStyle'))) {
             writer.removeAttribute('imageStyle', item); changed = true;
+          }
+          var width = managed.normalizeWidth(item.getAttribute('papijoImageWidth'));
+          if (item.hasAttribute('papijoImageWidth') && width !== item.getAttribute('papijoImageWidth')) {
+            if (width === null) { writer.removeAttribute('papijoImageWidth', item); }
+            else { writer.setAttribute('papijoImageWidth', width, item); }
+            changed = true;
           }
           ['srcset', 'sizes', 'sources', 'width', 'height', 'resizedWidth'].forEach(function (key) {
             if (item.hasAttribute(key)) { writer.removeAttribute(key, item); changed = true; }
@@ -386,7 +396,10 @@
       if (!toolbar || (!linkView && (!toolbar.items || !Array.from(toolbar.items).some(function (item) {
         return item.papijoManagedImageButton;
       })))) { return; }
-      if (!linkView) { toolbar.maxWidth = 'calc(100vw - 16px)'; }
+      if (!linkView) {
+        toolbar.maxWidth = Math.max(80, Math.min(window.innerWidth - 16,
+          editor.ui.view.editable.element.clientWidth)) + 'px';
+      }
       var rect = toolbar.element.getBoundingClientRect();
       if (!rect.width || (rect.left >= 8 && rect.right <= window.innerWidth - 8)) { return; }
       var viewImage = editor.editing.view.document.selection.getSelectedElement();
@@ -404,6 +417,9 @@
     var probe = editor.ui.componentFactory.create('undo');
     var ButtonView = probe.constructor;
     probe.destroy();
+    H5PEditor.AdvancedTextPapiJoInlineImageResize.install(editor, function (image) {
+      return !!editableImage(image);
+    }, ButtonView, t);
     function refreshInsertion() {
       var selection = editor.model.document.selection;
       var selected = selection.getSelectedElement();
@@ -429,8 +445,7 @@
       });
       button.bind('isEnabled').to(insertion, 'isEnabled');
       button.on('execute', function () {
-        controls(widget);
-        widget.inlineImageUi.$button.trigger('click');
+        openPicker(widget);
       });
       return button;
     }
@@ -464,9 +479,10 @@
     state.imageWidget = null;
     state.$image.empty();
     state.$form.prop('hidden', true);
-    state.$button.attr('aria-expanded', 'false');
+    state.$controls.prop('hidden', true);
+    state.$status.text('');
     state.draft = undefined;
-    if (restore && widget.ckeditor && state.selection &&
+    if (restore && widget.ckeditor === state.editor && state.editor && state.editor.state === 'ready' && state.selection &&
         (!state.target || validReplacementTarget(widget, state))) {
       widget.ckeditor.model.change(function (writer) { writer.setSelection(state.selection); });
       widget.ckeditor.editing.view.focus();
@@ -500,74 +516,77 @@
     return definition;
   }
 
+  // Both native toolbar modes open the same managed H5P picker directly.
+  function openPicker(widget) {
+    var editor = widget.ckeditor;
+    var selection = editor && editor.model.document.selection;
+    var target = selection && selection.getSelectedElement();
+    var store = getStore(widget);
+    var replacing = target && target.is('element', modelName) && store &&
+      store.getDefinition(target.getAttribute('inlineImageId'));
+    if (!selection || editor.state !== 'ready' || editor.isReadOnly ||
+        (!replacing && (!selection.isCollapsed || !editor.model.schema.checkChild(selection.getFirstPosition(), modelName))) ||
+        !getStore(widget) || !H5PEditor.widgets.image) {
+      return;
+    }
+    controls(widget);
+    var state = widget.inlineImageUi;
+    close(widget, false);
+    state.selection = editor.model.createSelection(selection);
+    state.editor = editor;
+    state.target = replacing ? target : null;
+    state.expectedId = replacing ? target.getAttribute('inlineImageId') : null;
+    state.open = true;
+    state.$apply.text(t(replacing ? 'applyReplacementImage' : 'applyInlineImage'));
+    state.$alt.val('');
+    state.$status.text('');
+    state.$form.prop('hidden', false);
+    state.$controls.prop('hidden', false);
+    var generation = state.generation;
+    var imageParent = {
+      library: widget.parent && widget.parent.library || 'H5P.AdvancedTextPapiJo',
+      ready: function (callback) { callback(); }
+    };
+    var imageWidget = new H5PEditor.widgets.image(imageParent, {
+      name: 'image', type: 'image', label: t(replacing ? 'replaceInlineImage' : 'insertInlineImage'), optional: true,
+      disableCopyright: true
+    }, undefined, function (_field, value) {
+      if (!state.open || generation !== state.generation) { return; }
+      if (state.draft && value && value.path !== state.draft.path) { state.$alt.val(''); }
+      // The native widget can reuse/mutate its params object for another file.
+      // Keep a snapshot so the path comparison above clears the previous ALT.
+      state.draft = value ? JSON.parse(JSON.stringify(value)) : value;
+    });
+    state.imageWidget = imageWidget;
+    imageWidget.appendTo(state.$image);
+    // Match tooltip images: omit copyright and remove only this instance's
+    // Crop/Rotate trigger; the native file selector and preview remain.
+    if (imageWidget.$editImage && typeof imageWidget.$editImage.remove === 'function') {
+      imageWidget.$editImage.remove();
+    }
+    // Any remaining native buttons must not submit this local form.
+    state.$image.find('button').attr('type', 'button');
+  }
+
   function controls(widget) {
     if (widget.inlineImageUi) { return; }
     var $ = H5PEditor.$;
     var formId = 'papijo-inline-image-form-' + (++uiSequence);
     var state = widget.inlineImageUi = { generation: 0, open: false };
-    state.$button = $('<button>', {
-      type: 'button', text: t('insertInlineImage'), 'class': 'papijo-inline-image-insert',
-      'aria-controls': formId, 'aria-expanded': 'false'
-    });
-    state.$button.prop('hidden', !!widget.ckeditor);
     state.$image = $('<div>');
     state.$alt = $('<input>', { type: 'text', id: formId + '-alt' });
     var $altLabel = $('<label>', {
       'for': formId + '-alt', text: t('imageAltText')
     }).append(state.$alt);
     state.$status = $('<p>', { 'aria-live': 'polite' });
-    var $apply = $('<button>', { type: 'submit', text: t('applyInlineImage') });
+    state.$apply = $('<button>', { type: 'submit', text: t('applyInlineImage') });
     var $cancel = $('<button>', { type: 'button', text: t('cancel') });
     state.$form = $('<form>', {
       id: formId, hidden: true, 'class': 'papijo-inline-image-form'
-    }).append(state.$image, $altLabel, $apply, $cancel);
-    state.$controls = $('<div>', { 'class': 'papijo-inline-image-controls' })
-      .append(state.$button, state.$form, state.$status).appendTo(widget.$item);
+    }).append(state.$image, $altLabel, state.$status, state.$apply, $cancel);
+    state.$controls = $('<div>', { hidden: true, 'class': 'papijo-inline-image-controls' })
+      .append(state.$form).appendTo(widget.$item);
 
-    state.$button.on('mousedown' + namespace, function (event) { event.preventDefault(); });
-    state.$button.on('click' + namespace, function () {
-      var editor = widget.ckeditor;
-      var selection = editor && editor.model.document.selection;
-      var target = selection && selection.getSelectedElement();
-      var store = getStore(widget);
-      var replacing = target && target.is('element', modelName) && store &&
-        store.getDefinition(target.getAttribute('inlineImageId'));
-      if (!selection || editor.isReadOnly ||
-          (!replacing && (!selection.isCollapsed || !editor.model.schema.checkChild(selection.getFirstPosition(), modelName))) ||
-          !getStore(widget) || !H5PEditor.widgets.image) {
-        state.$status.text(t('placeInlineImageCursor'));
-        return;
-      }
-      close(widget, false);
-      state.selection = editor.model.createSelection(selection);
-      state.editor = editor;
-      state.target = replacing ? target : null;
-      state.expectedId = replacing ? target.getAttribute('inlineImageId') : null;
-      state.open = true;
-      $apply.text(t(replacing ? 'applyReplacementImage' : 'applyInlineImage'));
-      state.$alt.val('');
-      state.$status.text('');
-      state.$form.prop('hidden', false);
-      state.$button.attr('aria-expanded', 'true');
-      var generation = state.generation;
-      var imageParent = {
-        library: widget.parent && widget.parent.library || 'H5P.AdvancedTextPapiJo',
-        ready: function (callback) { callback(); }
-      };
-      var imageWidget = new H5PEditor.widgets.image(imageParent, {
-        name: 'image', type: 'image', label: t(replacing ? 'replaceInlineImage' : 'insertInlineImage'), optional: true
-      }, undefined, function (_field, value) {
-        if (!state.open || generation !== state.generation) { return; }
-        if (state.draft && value && value.path !== state.draft.path) { state.$alt.val(''); }
-        // The native widget can reuse/mutate its params object for another file.
-        // Keep a snapshot so the path comparison above clears the previous ALT.
-        state.draft = value ? JSON.parse(JSON.stringify(value)) : value;
-      });
-      state.imageWidget = imageWidget;
-      imageWidget.appendTo(state.$image);
-      // Native image/copyright buttons omit type and sit inside this local form.
-      state.$image.find('button').attr('type', 'button');
-    });
     state.$form.on('submit' + namespace, function (event) {
       event.preventDefault();
       if (!state.open) { return; }
@@ -614,7 +633,7 @@
       config.plugins.push(inline, 'ImageToolbar', 'ImageStyle');
       config.image = Object.assign({}, config.image, {
         styles: { options: ['inline', 'alignLeft', 'alignRight'] },
-        toolbar: ['imageStyle:inline', 'imageStyle:alignLeft', 'imageStyle:alignRight', '|', 'insertImage', 'papijoLinkImage', 'imageTextAlternative'],
+        toolbar: ['imageStyle:inline', 'imageStyle:alignLeft', 'imageStyle:alignRight', '|', 'insertImage', 'papijoLinkImage', 'imageTextAlternative', 'papijoResetImageSize'],
         insert: Object.assign({}, config.image && config.image.insert, { integrations: ['papijoH5p'] })
       });
       var items = Array.isArray(config.toolbar) ? config.toolbar : config.toolbar.items;

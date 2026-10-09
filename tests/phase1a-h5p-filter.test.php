@@ -98,6 +98,16 @@ foreach (array('https://example.com/details?q=1&amp;b=2#photo', 'http://example.
 }
 echo "INLINE IMAGE LINK FILTER PASS\n";
 
+// Both actual PHP validators preserve data; numeric validation belongs to the
+// independently packaged shared contract, not PHP's protocol filtering.
+foreach (array('0.1', '30', '55.5', '100', '0', '-1', '101', 'NaN', 'Infinity', '1e1', 'calc(50%)') as $width) {
+  $sized = '<p><span class="papijo-inline-image" data-papijo-inline-image-id="inline-1" data-papijo-inline-image-width="' . $width . '"></span></p>';
+  $expected = $sized;
+  $validator->validateText($sized, $inlineSemantics);
+  assertSameValue($expected, $sized, 'PHP width preservation before strict shared validation');
+}
+echo "INLINE IMAGE WIDTH FILTER PASS\n";
+
 // Exercise PHP's actual recursive list/group/image dispatch without file writes.
 $fileCore = (object) array('relativePathRegExp' => '/^$never-match/');
 $fileValidator = new H5PContentValidator(new Phase1AFrameworkStub(), $fileCore);
