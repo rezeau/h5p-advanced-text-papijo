@@ -238,3 +238,16 @@ with real captured mouse gestures and keyboard events. PHP adds a width filter
 group and four resize save/export/reimport cases; live CLI adds 20 resized cases.
 All editor harnesses load the new declared local controller before its adapter.
 See [the Resize report/checklist](INLINE-IMAGES-RESIZE.md) for coverage and limits.
+
+Caption Phase B adds six Node tests, `inline-images-caption-browser.js`, and the
+declared local Caption controller before the adapter. The existing image route
+exercises production round trips/form/history/target safety and 852 editor plus
+852 runtime layout combinations in each run. Supplemental font/handle/description
+checks can run through `/inline-images.html?caption-supplement`; the complete
+suite still uses all four viewports by default. PHP lifecycle adds captioned
+standalone/Accordion/Column/Book and saved-child cases, CLI export/reimport keeps
+its foreign-file limitation assertion, and live CLI rendering has 80 cases.
+Final automated verification passed **15/15 routes and 21/21 runs** on each
+installed CKEditor build. User-reported manual acceptance: **PASS** in H5P CLI
+and WordPress. See [the Caption contract, verification and user-reported manual
+acceptance](INLINE-IMAGES-CAPTION.md).

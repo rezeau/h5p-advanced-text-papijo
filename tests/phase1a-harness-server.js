@@ -11,6 +11,8 @@ const ckeditorRoot = process.env.PAPIJO_CKEDITOR_ROOT ||
   'C:\\my_first_h5p_environment\\libraries\\h5p-editor-php-library\\ckeditor';
 const editorRoot = path.dirname(ckeditorRoot);
 const routes = {
+  '/advanced-text-papijo-inline-image-caption.js': path.join(root, 'editor', 'advanced-text-papijo-inline-image-caption.js'),
+  '/inline-images-caption-browser.js': path.join(__dirname, 'inline-images-caption-browser.js'),
   '/inline-images-paragraph-browser.js': path.join(__dirname, 'inline-images-paragraph-browser.js'),
   '/advanced-text-papijo-inline-image-paragraph.js': path.join(root, 'editor', 'advanced-text-papijo-inline-image-paragraph.js'),
   '/inline-images-resize-browser.js': path.join(__dirname, 'inline-images-resize-browser.js'),
@@ -76,6 +78,18 @@ const routes = {
 };
 
 const server = http.createServer((request, response) => {
+  if (request.url === '/managed-link-frame.html') {
+    response.writeHead(200, { 'Content-Type': 'text/html' });
+    response.end('<!doctype html><html><head><style>html,body{margin:0;height:100%}iframe{display:block;width:100%;height:100%;border:0}</style></head><body><iframe id="papijo-editor-frame" name="papijo-editor-frame" src="/inline-images.html?link-click-only"></iframe></body></html>');
+    return;
+  }
+  const captionSize = /^\/caption-size-(32-16|128-64|1800-900|240-960)\.svg$/.exec(request.url);
+  if (captionSize) {
+    const [width, height] = captionSize[1].split('-');
+    response.writeHead(200, { 'Content-Type': 'image/svg+xml' });
+    response.end('<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '"><rect width="100%" height="100%" fill="orange"/></svg>');
+    return;
+  }
   if (request.url === '/harness-host.json') {
     const file = routes['/h5peditor-html.js'];
     response.writeHead(200, { 'Content-Type': 'application/json' });
@@ -94,7 +108,7 @@ const server = http.createServer((request, response) => {
     response.end(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jN1sAAAAASUVORK5CYII=', 'base64'));
     return;
   }
-  const filePath = routes[request.url];
+  const filePath = routes[request.url.split('?')[0]];
 
   if (!filePath) {
     response.writeHead(404);

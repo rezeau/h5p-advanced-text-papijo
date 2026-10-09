@@ -62,6 +62,9 @@ try {
     $source->text = str_replace($attribute, $attribute . ' data-papijo-inline-image-style="' . $style . '"', $source->text);
   }
   mkdir($temporary . '/content/42/images', 0777, true);
+  // Caption in the original lifecycle also exercises the saved-child copy.
+  $source->text = preg_replace('/(<span class="papijo-inline-image"[^>]*>)<\/span>/',
+    '$1<span class="papijo-image-caption">Caption: été &amp; two  spaces</span></span>', $source->text, 1);
   foreach (array_merge($source->inlineImages, $source->tooltipImages) as $entry) {
     copyCheck(isset($fixtureFiles[$entry->image->path]), 'Every semantic image requires repository-owned bytes');
     copyCheck(copy($sourceFolder . $fixtureFiles[$entry->image->path], $temporary . '/content/42/' . $entry->image->path), 'Source fixture must exist');
@@ -206,7 +209,7 @@ try {
   // Linked occurrences retain the same semantic file lifecycle. Actual storage
   // and H5PExport run only in this test's unique temporary tree.
   $linkValidator = new H5PContentValidator($framework, null);
-  foreach (array('link', 'resize') as $feature) {
+  foreach (array('link', 'resize', 'caption') as $feature) {
   foreach (array('standalone', 'accordion', 'column', 'book') as $container) {
     $destination++;
     $child = json_decode(json_encode($source));
@@ -220,13 +223,15 @@ try {
       '<span class="papijo-inline-image" data-papijo-inline-image-id="' . $A->id .
       '" data-papijo-inline-image-style="alignRight" data-papijo-inline-image-link="' . $Y . '"></span>' .
       '<span class="papijo-inline-image" data-papijo-inline-image-id="' . $A->id . '"></span></p>';
-    if ($feature === 'resize') {
+    if ($feature === 'resize' || $feature === 'caption') {
       $child->text = '<p>';
       foreach (array(null, '30', '70', '100', '0.1', '55.5') as $index => $width) {
         $child->text .= '<span class="papijo-inline-image" data-papijo-inline-image-id="' . ($index === 5 ? $B->id : $A->id) . '"' .
           ($width === null ? '' : ' data-papijo-inline-image-width="' . $width . '"') .
           ($index === 2 ? ' data-papijo-inline-image-link="' . $X . '"' : '') .
-          ($index === 5 ? ' data-papijo-inline-image-style="alignLeft" data-papijo-inline-image-link="' . $Y . '"' : '') . '></span>';
+          ($index === 5 ? ' data-papijo-inline-image-style="alignLeft" data-papijo-inline-image-link="' . $Y . '"' : '') . '>' .
+          ($feature === 'caption' && $index !== 1 ? '<span class="papijo-image-caption">' .
+            ($index === 0 ? 'Caption A: été' : 'Caption B &amp; two  spaces 🐇') . '</span>' : '') . '</span>';
       }
       $child->text .= '</p>';
     }
@@ -275,7 +280,7 @@ try {
     echo 'PHP IMAGE ' . strtoupper($feature) . ' FILTER/SAVE/RETAIN/EXPORT/REIMPORT PASS ' . $container . "\n";
   }
   }
-  copyCheck($framework->exports === 21, 'Original/replacement/link/resize content exports must complete');
+  copyCheck($framework->exports === 25, 'Original/replacement/link/resize/caption content exports must complete');
 }
 finally {
   // Only this test's unique temporary tree; never a site/content/library directory.

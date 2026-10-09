@@ -151,3 +151,55 @@
   overflow-wrap: anywhere;
   text-align: start;
 }
+/* Captioned widgets retain the original image basis while reserving caption flow. */
+.papijo-advanced-text-editor .image-inline.papijo-image-captioned {
+  display: inline-block;
+  width: var(--papijo-caption-unit-width, auto);
+  max-width: 100%;
+}
+.papijo-advanced-text-editor .image-inline.papijo-image-captioned.image-style-align-left,
+.papijo-advanced-text-editor .image-inline.papijo-image-captioned.image-style-align-right {
+  max-width: calc(100% - 0.75em);
+}
+.papijo-advanced-text-editor .image-inline.papijo-image-captioned img,
+.papijo-advanced-text-editor .image-inline.papijo-image-captioned a {
+  display: block;
+  width: var(--papijo-caption-image-width, auto);
+  max-width: none;
+  height: auto;
+}
+.papijo-advanced-text-editor .papijo-image-captioned.image-style-align-right img,
+.papijo-advanced-text-editor .papijo-image-captioned.image-style-align-right a {
+  margin-left: auto;
+}
+.papijo-advanced-text-editor .papijo-image-captioned:not(.image-style-align-left):not(.image-style-align-right) img,
+.papijo-advanced-text-editor .papijo-image-captioned:not(.image-style-align-left):not(.image-style-align-right) a {
+  margin-inline: auto;
+}
+.papijo-advanced-text-editor .papijo-image-caption {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  background-color: #f2f2f2;
+  padding: 0.4em 0.7em;
+  white-space: break-spaces;
+  overflow-wrap: anywhere;
+  margin-top: 8px;
+}
+.papijo-advanced-text-editor .papijo-image-captioned.ck-widget_selected .papijo-image-caption {
+  margin-top: 28px;
+}
+.ck.papijo-image-caption-form {
+  box-sizing: border-box;
+  padding: var(--ck-spacing-large, 12px);
+  width: min(340px, calc(100vw - 16px));
+}
+.ck.papijo-image-caption-form label,
+.ck.papijo-image-caption-form textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+.ck.papijo-image-caption-form .ck-button__label { white-space: normal; }
+.ck.papijo-image-caption-form .papijo-caption-error { color: var(--ck-color-base-error, #b00); }

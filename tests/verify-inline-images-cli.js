@@ -60,9 +60,18 @@ const { sourceParams, clipboard, imageFixture } = require('./h5p-inline-image-co
       attribute + ' data-papijo-inline-image-width="' + (id === '2200ad5e-671e-42e3-835b-93cbcc338fae' ? '70' : '55.5') + '"');
     cases.push([route, contentId, type, params, replacement, linked, true]);
   }
+  // Captioned copies of all established combinations remain disposable runtime DOM.
+  for (const [route, contentId, type, original, replacement, linked, resized] of cases.slice()) {
+    const params = JSON.parse(JSON.stringify(original));
+    const text = type === 'AdvancedTextPapiJo' ? params : type === 'AccordionPapiJo' ? params.panels[0].content.params : params.content[0].content.params;
+    let occurrence = 0;
+    text.text = text.text.replace(/(<span class="papijo-inline-image"[^>]*>)<\/span>/g,
+      (_match, opening) => opening + '<span class="papijo-image-caption">Caption ' + (++occurrence) + ': été &amp; &lt;b&gt;literal&lt;/b&gt; two  spaces</span></span>');
+    cases.push([route, contentId, type, params, replacement, linked, resized, true]);
+  }
   const browser = await chromium.launch({ channel: process.env.PAPIJO_BROWSER_CHANNEL || 'msedge', headless: true });
   try {
-    for (const [route, contentId, type, params, replacement, linked, resized] of cases) {
+    for (const [route, contentId, type, params, replacement, linked, resized, captioned] of cases) {
       const page = await browser.newPage();
       try {
         await page.route('**/*', route => {
@@ -87,7 +96,7 @@ const { sourceParams, clipboard, imageFixture } = require('./h5p-inline-image-co
             await frame.addScriptTag({ path: path.join(root, file) });
           }
         }
-        const result = await frame.evaluate(async ({ contentId, type, params, linked, resized }) => {
+        const result = await frame.evaluate(async ({ contentId, type, params, linked, resized, captioned }) => {
           const calls = []; const getPath = H5P.getPath;
           H5P.getPath = function (imagePath, id) { calls.push([imagePath, id]); return getPath.apply(this, arguments); };
           const $root = H5P.jQuery('<div>').appendTo(document.body);
@@ -129,6 +138,15 @@ const { sourceParams, clipboard, imageFixture } = require('./h5p-inline-image-co
                 }
               }
             }
+            if (captioned) {
+              const captions = Array.from(textRoot.querySelectorAll('.papijo-image-caption'));
+              if (captions.length !== 2 || new Set(captions.map(caption => caption.id)).size !== 2) throw Error('Live captions require distinct occurrence IDs');
+              images.forEach((image, index) => {
+                const caption = captions[index];
+                if (caption.closest('a') || document.getElementById(image.getAttribute('aria-describedby')) !== caption ||
+                  !caption.textContent.includes(': été & <b>literal</b> two  spaces')) throw Error('Live caption text/link/description contract failed');
+              });
+            }
             if (linked) {
               for (const image of images) {
                 const anchor = image.parentElement;
@@ -157,7 +175,7 @@ const { sourceParams, clipboard, imageFixture } = require('./h5p-inline-image-co
             trigger.click(); return output;
           }
           finally { H5P.getPath = getPath; $root.remove(); }
-        }, { contentId, type, params, linked, resized });
+        }, { contentId, type, params, linked, resized, captioned });
         assert.ok(result.calls.every(call => call[1] === contentId));
         const childParams = type === 'AdvancedTextPapiJo' ? params : type === 'AccordionPapiJo' ? params.panels[0].content.params : params.content[0].content.params;
         const activeIds = [replacement ? 'live-replacement-B' : '97dd2fde-fd7f-46e2-bb2d-7b686993880f', '2200ad5e-671e-42e3-835b-93cbcc338fae'];
@@ -167,7 +185,7 @@ const { sourceParams, clipboard, imageFixture } = require('./h5p-inline-image-co
           assert.ok(result.calls.some(call => call[0] === childParams.inlineImages.find(entry => entry.id === id).image.path));
         }
         if (replacement) { assert.ok(childParams.inlineImages.find(entry => entry.id === '97dd2fde-fd7f-46e2-bb2d-7b686993880f'), 'Inactive A must remain retained'); }
-        console.log('LIVE CLI ' + (resized ? 'RESIZE ' : '') + (linked ? 'LINK ' : '') + (replacement ? 'REPLACEMENT ' : '') + 'PASS ' + JSON.stringify(result));
+        console.log('LIVE CLI ' + (captioned ? 'CAPTION ' : '') + (resized ? 'RESIZE ' : '') + (linked ? 'LINK ' : '') + (replacement ? 'REPLACEMENT ' : '') + 'PASS ' + JSON.stringify(result));
       }
       finally { await page.close(); }
     }

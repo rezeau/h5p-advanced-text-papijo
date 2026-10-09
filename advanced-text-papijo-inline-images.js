@@ -5,6 +5,47 @@ var PapijoManagedInlineImages = (function () {
   var sequence = 0;
   var attribute = 'data-papijo-inline-image-id';
   var className = 'papijo-inline-image';
+  var captionClass = 'papijo-image-caption';
+
+  // One plain-text boundary for forms, model repair, canonical readers and runtime.
+  function validateCaption(value) {
+    if (value === undefined || value === null) { return { value: null, error: null }; }
+    if (typeof value !== 'string') { return { value: null, error: 'invalid' }; }
+    for (var point of value) {
+      var code = point.codePointAt(0);
+      if (code >= 0xd800 && code <= 0xdfff) { return { value: null, error: 'invalid' }; }
+    }
+    value = value.replace(/\r\n|[\r\n\t\u0085\u2028\u2029]/g, ' ').replace(/^ +| +$/g, '');
+    if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/u.test(value)) {
+      return { value: null, error: 'invalid' };
+    }
+    if (Array.from(value).length > 1000) { return { value: null, error: 'length' }; }
+    return { value: /[^\s\u200b\u200c\u200d\u2060\ufeff]/u.test(value) ? value : null, error: null };
+  }
+  function normalizeCaption(value) { return validateCaption(value).value; }
+
+  // Malformed canonical children drop the entire caption, never surrounding text.
+  // Only formatting whitespace plus exactly one direct, attribute-free text span.
+  function readCaption(marker) {
+    var children = Array.from(marker.childNodes || []);
+    var elements = children.filter(function (node) { return node.nodeType !== 3 || /\S/.test(node.data); });
+    if (elements.length !== 1) { return null; }
+    var child = elements[0];
+    if (child.nodeName !== 'SPAN' || child.getAttribute('class') !== captionClass ||
+        child.attributes.length !== 1 || Array.from(child.childNodes).some(function (node) { return node.nodeType !== 3; })) {
+      return null;
+    }
+    if (child.textContent.length > 12000) { return null; }
+    return normalizeCaption(child.textContent);
+  }
+
+  // Derived display metrics only: never mutate the occurrence percentage.
+  function captionSize(natural, basis, gutter, percentage, fontSize) {
+    var available = Math.max(0, basis - gutter);
+    var image = Math.min(natural, available, percentage === null ? available : basis * percentage / 100);
+    return { image: image, unit: percentage === null ? image :
+      Math.min(available, Math.max(image, 8 * fontSize)) };
+  }
 
   // A percentage is occurrence state, never file metadata or arbitrary CSS.
   function normalizeWidth(value) {
@@ -138,6 +179,12 @@ var PapijoManagedInlineImages = (function () {
   return {
     attribute: attribute,
     className: className,
+    captionClass: captionClass,
+    captionedClass: 'papijo-image-captioned',
+    validateCaption: validateCaption,
+    normalizeCaption: normalizeCaption,
+    readCaption: readCaption,
+    captionSize: captionSize,
     styleAttribute: 'data-papijo-inline-image-style',
     linkAttribute: 'data-papijo-inline-image-link',
     widthAttribute: 'data-papijo-inline-image-width',

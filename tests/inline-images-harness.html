@@ -51,6 +51,7 @@
   <script src="/advanced-text-papijo-inline-images.js"></script>
   <script src="/advanced-text-papijo-inline-image-resize.js"></script>
   <script src="/advanced-text-papijo-inline-image-paragraph.js"></script>
+  <script src="/advanced-text-papijo-inline-image-caption.js"></script>
   <script src="/advanced-text-papijo-inline-image.js"></script>
   <script src="/advanced-text-papijo-tooltip-sanitizer.js"></script>
   <script src="/advanced-text-papijo-tooltip-selection.js"></script>
@@ -65,6 +66,7 @@
   <script src="/inline-images-link-browser.js"></script>
   <script src="/inline-images-resize-browser.js"></script>
   <script src="/inline-images-paragraph-browser.js"></script>
+  <script src="/inline-images-caption-browser.js"></script>
 </head>
 <body class="h5peditor">
   <div id="fixture"></div>
@@ -138,7 +140,7 @@
         var balloon = ctx.editor.plugins.get('ContextualBalloon');
         var toolbar = balloon.visibleView;
         assert(toolbar && toolbar.element.querySelector('button[data-cke-tooltip-text="Change image text alternative"]'), 'Native image toolbar must appear');
-        assert(toolbar.items.length === 9, 'Image toolbar must have three styles, separator, replace, link, alt, reset and paragraph actions');
+        assert(toolbar.items.length === 10, 'Image toolbar must have three styles, separator, replace, link, alt, reset, paragraph actions and caption');
         toolbar.element.querySelector('button[data-cke-tooltip-text="Change image text alternative"]').click();
         var form = balloon.visibleView;
         assert(form.element.classList.contains('ck-text-alternative-form'), 'Must use the native alternative text form');
@@ -295,6 +297,30 @@
         }
       }
       try {
+        if (location.search === '?link-click-only' || location.search === '?link-only') {
+          await runPapijoManagedLinkClick({ open: open, close: close, caret: caret,
+            imageModel: imageModel, selectImage: selectImage, assert: assert, results: results });
+          if (location.search === '?link-only') {
+            await runPapijoInlineImageLinks({ open: open, close: close, apply: apply, caret: caret,
+              imageModel: imageModel, selectImage: selectImage, altForm: altForm, submitAlt: submitAlt, assert: assert, results: results });
+          }
+          document.documentElement.dataset.testStatus = 'pass';
+          document.getElementById('result').textContent = JSON.stringify({ status: 'PASS', results: results }, null, 2);
+          return;
+        }
+        if (location.search === '?caption-supplement') {
+          await runPapijoCaptionSupplement({ open: open, close: close, selectImage: selectImage, assert: assert, results: results });
+          document.documentElement.dataset.testStatus = 'pass';
+          document.getElementById('result').textContent = JSON.stringify({ status: 'PASS', results: results }, null, 2);
+          return;
+        }
+        if (location.search === '?caption-only') {
+          await runPapijoInlineImageCaption({ open: open, close: close, apply: apply, caret: caret,
+            imageModel: imageModel, selectImage: selectImage, altForm: altForm, submitAlt: submitAlt, assert: assert, results: results });
+          document.documentElement.dataset.testStatus = 'pass';
+          document.getElementById('result').textContent = JSON.stringify({ status: 'PASS', results: results }, null, 2);
+          return;
+        }
         await checkPickerRecreation();
         await checkContentCopies();
         await runPapijoInlineImagePhase3({ open: open, close: close, apply: apply, caret: caret,
@@ -307,9 +333,13 @@
           selectImage: selectImage, imageModel: imageModel, assert: assert, results: results });
         await runPapijoInlineImageParagraph({ open: open, close: close, apply: apply, caret: caret,
           imageModel: imageModel, selectImage: selectImage, assert: assert, results: results });
+        await runPapijoInlineImageCaption({ open: open, close: close, apply: apply, caret: caret,
+          imageModel: imageModel, selectImage: selectImage, altForm: altForm, submitAlt: submitAlt, assert: assert, results: results });
         await runPapijoInlineImageLinks({ open: open, close: close, apply: apply, caret: caret,
           imageModel: imageModel, selectImage: selectImage, altForm: altForm,
           submitAlt: submitAlt, assert: assert, results: results });
+        await runPapijoManagedLinkClick({ open: open, close: close, caret: caret,
+          imageModel: imageModel, selectImage: selectImage, assert: assert, results: results });
         var ctx = await open('<p>Before after</p>');
         await checkToolbarVisibility(ctx);
         var french = await open('<p>Texte</p>', [], 'fr');

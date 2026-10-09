@@ -18,6 +18,12 @@ test('installed CLI content export/reimport is self-contained only for local ima
       // Only the actual installed CLI/core code is used from the H5P environment.
       const contentFile = path.join(temporary, 'content', folder, 'content.json');
       const captured = JSON.parse(fs.readFileSync(contentFile, 'utf8'));
+      const captionChild = folder === 'text-01' ? captured : folder === 'col-pj' ? captured.content[0].content.params : captured.panels[0].content.params;
+      let occurrence = 0;
+      captionChild.text = captionChild.text.replace(/(<span class="papijo-inline-image"[^>]*>)<\/span>/g,
+        (_match, opening) => opening + (++occurrence === 1 ? '<span class="papijo-image-caption">Caption A: été &amp; two  spaces</span>' : '') + '</span>');
+      assert.ok(captionChild.text.includes('papijo-image-caption'));
+      fs.writeFileSync(contentFile, JSON.stringify(captured));
       const header = JSON.parse(fs.readFileSync(path.join(temporary, 'content', folder, 'h5p.json'), 'utf8'));
       const archive = await logic.export(header.mainLibrary, folder, true, path.join(temporary, 'exports'));
       const imported = folder + '-reimport';

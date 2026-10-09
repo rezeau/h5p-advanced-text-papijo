@@ -108,6 +108,17 @@ foreach (array('0.1', '30', '55.5', '100', '0', '-1', '101', 'NaN', 'Infinity', 
 }
 echo "INLINE IMAGE WIDTH FILTER PASS\n";
 
+// Controlled child text bypasses data-attribute protocol rewriting, including colons.
+foreach (array('Rabbit: garden', 'Quotes &quot; and apostrophe&#39;', 'Ampersand &amp; literal &lt;b&gt;text&lt;/b&gt;',
+  'Été français', '🐇👩‍👩‍👧‍👦', 'Two  internal   spaces', 'French space !', 'https://example.org/path', 'é') as $caption) {
+  $captioned = '<p><span class="papijo-inline-image" data-papijo-inline-image-id="inline-1" data-papijo-inline-image-width="0.1">' .
+    '<span class="papijo-image-caption">' . $caption . '</span></span></p>';
+  $expected = $captioned;
+  $validator->validateText($captioned, $inlineSemantics);
+  assertSameValue($expected, $captioned, 'Controlled caption text survives PHP filtering');
+}
+echo "INLINE IMAGE CAPTION FILTER PASS\n";
+
 // Exercise PHP's actual recursive list/group/image dispatch without file writes.
 $fileCore = (object) array('relativePathRegExp' => '/^$never-match/');
 $fileValidator = new H5PContentValidator(new Phase1AFrameworkStub(), $fileCore);

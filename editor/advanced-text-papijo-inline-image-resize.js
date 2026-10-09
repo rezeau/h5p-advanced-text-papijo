@@ -48,6 +48,7 @@
     var win = doc.defaultView;
     var handles = [], active = null, frame = null, observer = null;
     var observed = [], watching = false, destroyed = false;
+    var captionObserver = null, captionObserved = [];
     var explicitFocus = [];
     var leaving = false, exitTimer = null;
 
@@ -80,6 +81,14 @@
       }
       var styles = { '--papijo-image-width': sized ? width + '%' : null,
         '--papijo-image-natural-width': sized && dom && dom.image.naturalWidth ? dom.image.naturalWidth + 'px' : null };
+      var caption = managed.normalizeCaption(target.getAttribute('papijoImageCaption'));
+      // change:data can precede DOM reconversion when a caption is added/removed.
+      var captionElement = dom && dom.wrapper.querySelector('.' + managed.captionClass);
+      var g = caption && captionElement && geometry(editor, target);
+      var size = g && managed.captionSize(g.natural, g.basis, g.gutter, width,
+        parseFloat(win.getComputedStyle(captionElement).fontSize));
+      styles['--papijo-caption-image-width'] = size ? size.image + 'px' : null;
+      styles['--papijo-caption-unit-width'] = size ? size.unit + 'px' : null;
       Object.keys(styles).forEach(function (name) {
         if (styles[name] === null) {
           if (view.hasStyle(name)) { changed = true; if (writer) { writer.removeStyle(name, view); } }
@@ -92,13 +101,26 @@
     function projectAll() {
       if (destroyed) { return; }
       var dirty = [];
+      var captionRegions = new Set();
       Array.from(editor.model.document.getRootNames()).forEach(function (name) {
         Array.from(editor.model.createRangeIn(editor.model.document.getRoot(name)).getItems()).forEach(function (item) {
-          if (item.is('element', 'imageInline') && project(item, null)) { dirty.push(item); }
+          if (item.is('element', 'imageInline')) {
+            if (project(item, null)) { dirty.push(item); }
+            if (managed.normalizeCaption(item.getAttribute('papijoImageCaption'))) {
+              var g = geometry(editor, item);
+              if (g) { captionRegions.add(g.region); captionRegions.add(g.image); }
+            }
+          }
         });
       });
       // Avoid a render -> animation frame -> unconditional render loop.
       if (dirty.length) { editor.editing.view.change(function (writer) { dirty.forEach(function (item) { project(item, writer); }); }); }
+      var next = Array.from(captionRegions);
+      if (win.ResizeObserver && (next.length !== captionObserved.length || next.some(function (node, i) { return node !== captionObserved[i]; }))) {
+        if (!captionObserver) { captionObserver = new win.ResizeObserver(schedule); }
+        captionObserver.disconnect(); captionObserved = next;
+        next.forEach(function (node) { captionObserver.observe(node); });
+      }
     }
 
     function schedule() {
@@ -340,6 +362,7 @@
       if (frame !== null) { win.cancelAnimationFrame(frame); frame = null; }
       if (exitTimer !== null) { win.clearTimeout(exitTimer); exitTimer = null; }
       watch(false); if (observer) { observer.disconnect(); }
+      if (captionObserver) { captionObserver.disconnect(); } captionObserved = [];
       if (editable) {
         editable.removeEventListener('load', schedule, true);
         editable.removeEventListener('keydown', enterKeyboardResize, true);

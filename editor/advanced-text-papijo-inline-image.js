@@ -62,10 +62,11 @@
     editor.once('destroy', function () {
       if (widget.inlineImageUi && widget.inlineImageUi.editor === editor) { close(widget, false); }
     });
-    editor.model.schema.extend(modelName, { allowAttributes: ['inlineImageId', 'linkHref', 'papijoImageWidth'] });
+    editor.model.schema.extend(modelName, { allowAttributes: ['inlineImageId', 'linkHref', 'papijoImageWidth', 'papijoImageCaption'] });
     // Native surrounding-anchor upcast can run after the marker converter.
     // Carry its canonical choice to the first attached post-fix, not persistence.
     var importedLinks = new WeakMap();
+    editor.data.processor.registerRawContentMatcher({name:'span',classes:'papijo-image-caption'});
     function projection(id) {
       var store = getStore(widget);
       var definition = store && store.getDefinition(id);
@@ -107,6 +108,19 @@
         if (view.hasAttribute(managed.widthAttribute)) {
           api.consumable.consume(view, { attributes: [managed.widthAttribute] });
         }
+        var children = Array.from(view.getChildren());
+        var significant = children.filter(function(n){return !n.is('$text') || /\S/.test(n.data);});
+        var child = significant.length === 1 && significant[0];
+        if (child && child.is('element','span') && child.getAttribute('class') === managed.captionClass &&
+            Array.from(child.getAttributeKeys()).length === 1) {
+          var raw = child.getCustomProperty('$rawContent');
+          // Bounds precede entity decoding. Literal markup is rejected, not stripped.
+          if (typeof raw === 'string' && raw.length <= 12000 && raw.indexOf('<') === -1) {
+            var decoded = new DOMParser().parseFromString('<span>'+raw+'</span>','text/html').body.firstChild;
+            var caption = decoded && managed.normalizeCaption(decoded.textContent);
+            if (caption) { attributes.papijoImageCaption = caption; }
+          }
+        }
         var image = api.writer.createElement(modelName, attributes);
         importedLinks.set(image, href || null);
         return image;
@@ -114,7 +128,7 @@
       converterPriority: 'high'
     });
     editor.conversion.for('dataDowncast').elementToElement({
-      model: { name: modelName, attributes: ['inlineImageId', 'imageStyle', 'linkHref', 'papijoImageWidth'] },
+      model: { name: modelName, attributes: ['inlineImageId', 'imageStyle', 'linkHref', 'papijoImageWidth', 'papijoImageCaption'] },
       view: function (model, api) {
         var attributes = { 'class': managed.className };
         attributes[managed.attribute] = model.getAttribute('inlineImageId');
@@ -124,7 +138,11 @@
         if (href) { attributes[managed.linkAttribute] = href; }
         var width = managed.normalizeWidth(model.getAttribute('papijoImageWidth'));
         if (width !== null) { attributes[managed.widthAttribute] = String(width); }
-        return api.writer.createEmptyElement('span', attributes);
+        var caption = managed.normalizeCaption(model.getAttribute('papijoImageCaption'));
+        if (!caption) { return api.writer.createEmptyElement('span', attributes); }
+        return api.writer.createContainerElement('span', attributes, [
+          api.writer.createRawElement('span',{class:'papijo-image-caption'},function(el){el.textContent=caption;})
+        ]);
       },
       converterPriority: 'high'
     });
@@ -132,7 +150,7 @@
       dispatcher.on('attribute', function (event, data, api) {
         if (data.item.is('element', modelName) &&
             data.attributeKey !== 'inlineImageId' && data.attributeKey !== 'imageStyle' &&
-            data.attributeKey !== 'linkHref' && data.attributeKey !== 'papijoImageWidth') {
+            data.attributeKey !== 'linkHref' && data.attributeKey !== 'papijoImageWidth' && data.attributeKey !== 'papijoImageCaption') {
           // Native src/alt/size handlers expect an img. Consume projections before
           // those handlers run: the data view deliberately contains only a span.
           api.consumable.consume(data.item, event.name);
@@ -146,16 +164,64 @@
         event.stop();
       }, { priority: 'highest' });
     });
-    editor.conversion.for('editingDowncast').attributeToElement({
-      model: { name: modelName, key: 'linkHref' },
-      view: function (value, api) {
-        var href = managed.normalizeLink(value);
-        if (!href) { return null; }
-        var anchor = api.writer.createAttributeElement('a', { href: href }, { priority: 5 });
-        api.writer.setCustomProperty('link', true, anchor);
-        return anchor;
+
+    var imageUtils = editor.plugins.get('ImageUtils');
+    // An image-only anchor inside a noneditable widget has a native default
+    // navigation action. Cancel it only for this editor's managed widgets;
+    // keep href/model state and normal widget/LinkUI click handling intact.
+    editor.listenTo(editor.editing.view.document, 'click', function (event, data) {
+      var target = data.domTarget;
+      var wrapper = target && target.closest && target.closest('.image-inline');
+      if (!wrapper || !target.closest('a[href]')) { return; }
+      var view = editor.editing.view.domConverter.mapDomToView(wrapper);
+      var image = view && editor.editing.mapper.toModelElement(view);
+      if (!image || !image.is('element', modelName) || !image.hasAttribute('inlineImageId')) { return; }
+      data.preventDefault();
+      // Native LinkEditing explicitly opens modifier-click links from href.
+      if (data.domEvent.ctrlKey || data.domEvent.metaKey) { event.stop(); }
+    }, { context: '$capture', priority: 'highest' });
+    editor.conversion.for('editingDowncast').elementToStructure({
+      model: { name: modelName, attributes: ['papijoImageCaption'] },
+      view: function (model, api) {
+        var writer = api.writer, img = writer.createEmptyElement('img'), children = [img];
+        var caption = managed.normalizeCaption(model.getAttribute('papijoImageCaption'));
+        var captionId = caption ? 'papijo-editor-caption-' + managed.createId() : null;
+        if (caption) {
+          writer.setAttribute('aria-describedby', captionId, img);
+          children.push(writer.createUIElement('span', { class: managed.captionClass, id: captionId }, function (doc) {
+            var element = this.toDomElement(doc);
+            element.textContent = caption;
+            return element;
+          }));
+        }
+        return imageUtils.toImageWidget(writer.createContainerElement('span', {
+          class: 'image-inline' + (caption ? ' ' + managed.captionedClass : '')
+        }, children), writer, editor.t('image widget'));
       },
-      converterPriority: 'highest'
+      converterPriority: 'high'
+    });
+    editor.conversion.for('editingDowncast').add(function (dispatcher) {
+      dispatcher.on('attribute:linkHref:' + modelName, function (event, data, api) {
+        if (!api.consumable.consume(data.item, event.name)) { return; }
+        var view = api.mapper.toViewElement(data.item), img = imageUtils.findViewImgElement(view), writer = api.writer;
+        if (view.parent.is('attributeElement') && view.parent.getCustomProperty('link')) {
+          writer.unwrap(writer.createRangeOn(view), view.parent);
+        }
+        if (img.parent.is('attributeElement') && img.parent.getCustomProperty('link')) {
+          writer.unwrap(writer.createRangeOn(img), img.parent);
+        }
+        var href = managed.normalizeLink(data.attributeNewValue);
+        if (href) {
+          var captioned = !!managed.normalizeCaption(data.item.getAttribute('papijoImageCaption'));
+          // Preserve the established native link selection/UI for empty widgets.
+          // Captioned widgets move the anchor inside, around the img alone.
+          var attributes = captioned ? { href: href, tabindex: '-1' } : { href: href };
+          var anchor = writer.createAttributeElement('a', attributes, { priority: 5 });
+          writer.setCustomProperty('link', true, anchor);
+          writer.wrap(writer.createRangeOn(captioned ? img : view), anchor);
+        }
+        event.stop();
+      }, { priority: 'highest' });
     });
     editor.conversion.for('editingDowncast').add(function (dispatcher) {
       dispatcher.on('attribute:inlineImageId:' + modelName, function (event, data, api) {
@@ -194,6 +260,12 @@
           });
           if (item.hasAttribute('imageStyle') && !managed.normalizeStyle(item.getAttribute('imageStyle'))) {
             writer.removeAttribute('imageStyle', item); changed = true;
+          }
+          var caption = managed.normalizeCaption(item.getAttribute('papijoImageCaption'));
+          if (item.hasAttribute('papijoImageCaption') && caption !== item.getAttribute('papijoImageCaption')) {
+            if (caption) { writer.setAttribute('papijoImageCaption', caption, item); }
+            else { writer.removeAttribute('papijoImageCaption', item); }
+            changed = true;
           }
           var width = managed.normalizeWidth(item.getAttribute('papijoImageWidth'));
           if (item.hasAttribute('papijoImageWidth') && width !== item.getAttribute('papijoImageWidth')) {
@@ -425,6 +497,10 @@
       return !!editableImage(image) && managed.validDefinition(store.getDefinition(image.getAttribute('inlineImageId'))) &&
         typeof image.getAttribute('src') === 'string' && !!image.getAttribute('src');
     }, ButtonView, t);
+    H5PEditor.AdvancedTextPapiJoInlineImageCaption.install(editor, function (image) {
+      return !!editableImage(image) && editor.model.canEditAt(editor.model.createPositionBefore(image)) &&
+        typeof image.getAttribute('src') === 'string' && !!image.getAttribute('src');
+    }, ButtonView, t);
     function refreshInsertion() {
       var selection = editor.model.document.selection;
       var selected = selection.getSelectedElement();
@@ -641,7 +717,7 @@
         toolbar: ['imageStyle:inline', 'imageStyle:alignLeft', 'imageStyle:alignRight', '|', 'insertImage', 'papijoLinkImage', 'imageTextAlternative', 'papijoResetImageSize'],
         insert: Object.assign({}, config.image && config.image.insert, { integrations: ['papijoH5p'] })
       });
-      config.image.toolbar.push('papijoImageParagraphActions');
+      config.image.toolbar.push('papijoImageParagraphActions', 'papijoImageCaption');
       var items = Array.isArray(config.toolbar) ? config.toolbar : config.toolbar.items;
       // Grouping removes items from the end. Keep image insertion with the
       // common controls, while allowing later controls to overflow normally.

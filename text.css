@@ -82,3 +82,37 @@
   margin-left: 0.75em;
   max-width: calc(100% - 0.75em);
 }
+
+/* Caption text cannot widen a default image; explicit widths reserve 8em. */
+.h5p-advanced-text .papijo-inline-image.papijo-image-captioned {
+  display: inline-block;
+  width: var(--papijo-caption-unit-width, auto);
+  max-width: 100%;
+  vertical-align: middle;
+}
+.h5p-advanced-text .papijo-image-captioned.papijo-inline-image-wrap-left,
+.h5p-advanced-text .papijo-image-captioned.papijo-inline-image-wrap-right {
+  max-width: calc(100% - 0.75em);
+}
+.h5p-advanced-text .papijo-image-captioned > img,
+.h5p-advanced-text .papijo-image-captioned > .papijo-inline-image-link,
+.h5p-advanced-text .papijo-image-captioned > .papijo-inline-image-link > img {
+  display: block;
+  width: var(--papijo-caption-image-width, auto);
+  max-width: none;
+  height: auto;
+}
+.h5p-advanced-text .papijo-image-captioned.papijo-inline-image-wrap-right > img,
+.h5p-advanced-text .papijo-image-captioned.papijo-inline-image-wrap-right > a { margin-left: auto; }
+.h5p-advanced-text .papijo-image-captioned:not(.papijo-inline-image-wrap-left):not(.papijo-inline-image-wrap-right) > img,
+.h5p-advanced-text .papijo-image-captioned:not(.papijo-inline-image-wrap-left):not(.papijo-inline-image-wrap-right) > a { margin-inline: auto; }
+.h5p-advanced-text .papijo-image-caption {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  background-color: #f2f2f2;
+  padding: 0.4em 0.7em;
+  white-space: break-spaces;
+  overflow-wrap: anywhere;
+  margin-top: 8px;
+}

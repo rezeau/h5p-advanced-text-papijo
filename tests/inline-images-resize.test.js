@@ -38,6 +38,8 @@ test('resize is a declared local editor asset before the model adapter, with no 
   assert.equal(paths.indexOf('advanced-text-papijo-inline-image-resize.js') + 1,
     paths.indexOf('advanced-text-papijo-inline-image-paragraph.js'));
   assert.equal(paths.indexOf('advanced-text-papijo-inline-image-paragraph.js') + 1,
+    paths.indexOf('advanced-text-papijo-inline-image-caption.js'));
+  assert.equal(paths.indexOf('advanced-text-papijo-inline-image-caption.js') + 1,
     paths.indexOf('advanced-text-papijo-inline-image.js'));
   assert.deepEqual([manifest.majorVersion, manifest.minorVersion, manifest.patchVersion], [1, 1, 2]);
   assert.ok(!manifest.preloadedDependencies && !manifest.editorDependencies);

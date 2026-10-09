@@ -35,10 +35,10 @@ window.runPapijoInlineImageLinks = async function (h) {
     assert(rect.width && rect.height && rect.left >= 0 && rect.right <= innerWidth &&
       balloon.view.element.contains(toolbar.element), 'Image toolbar physically visible inside native balloon');
     var buttons = Array.from(toolbar.element.querySelectorAll('button'));
-    assert(buttons.length === 8 && buttons.every(function (button) {
+    assert(buttons.length === 9 && buttons.every(function (button) {
       var bounds = button.getBoundingClientRect(), hit = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
       return bounds.width && bounds.height && hit && button.contains(hit);
-    }), 'All eight image controls remain directly reachable');
+    }), 'All nine image controls remain directly reachable');
     return toolbar;
   }
   async function form(ctx) {
@@ -331,7 +331,7 @@ window.runPapijoInlineImageLinks = async function (h) {
       var balloon = editor.plugins.get('ContextualBalloon'), toolbar = balloon.visibleView;
       var rect = toolbar.element.getBoundingClientRect();
       var toolbarHeight = rect.height;
-      assert(rect.left >= 0 && rect.right <= innerWidth && toolbar.element.querySelectorAll('button').length === 8, 'Eight image controls fit viewport');
+      assert(rect.left >= 0 && rect.right <= innerWidth && toolbar.element.querySelectorAll('button').length === 9, 'Nine image controls fit viewport');
       assert(!editor.config.get('toolbar.shouldNotGroupWhenFull'), 'Main toolbar grouping unchanged');
       editor.editing.view.getDomRoot().setAttribute('data-papijo-link-keyboard', 'editable');
       await window.papijoHarnessPressKey('[data-papijo-link-keyboard="editable"]', 'Control+k');
@@ -401,4 +401,162 @@ window.runPapijoInlineImageLinks = async function (h) {
     h.results.push('Image Link security/runtime: strict URLs, form/command/model/upcast/runtime, marker precedence, surrounding anchors, native Enter, text/decorator isolation PASS');
   }
   finally { H5PEditor.t = originalTranslate; }
+};
+
+// Native navigation is intercepted by the runner with HTTP 204, never by this
+// click probe. This keeps the document alive while recording real attempts.
+window.runPapijoManagedLinkClick = async function (h) {
+  'use strict';
+  var originalPath = H5P.getPath, contexts = [], outcomes = [];
+  var definition = { id: 'linked-click', image: { path: 'images/large.svg' }, alt: 'Required image ALT' };
+  async function click(element, options) {
+    // Use an exposed point inside the image; native balloons may cover its
+    // center while preserving other directly clickable parts of the image.
+    if (element.tagName === 'IMG' && !options) {
+      var rect = element.getBoundingClientRect();
+      for (var point of [[0.5, 0.98], [0.98, 0.98], [0.02, 0.98], [0.5, 0.8], [0.5, 0.5], [0.2, 0.8], [0.8, 0.8]]) {
+        if (document.elementFromPoint(rect.left + rect.width * point[0], rect.top + rect.height * point[1]) === element) {
+          options = { position: { x: rect.width * point[0], y: rect.height * point[1] } }; break;
+        }
+      }
+      if (!options) { throw Error('No exposed image hit point: ' + JSON.stringify({ rect: rect.toJSON(), viewport: [innerWidth, innerHeight],
+        hit: document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.outerHTML.slice(0, 300),
+        toolbarRect: document.querySelector('.ck-balloon-panel')?.getBoundingClientRect().toJSON(), widget: element.closest('.image-inline')?.className })); }
+    }
+    element.setAttribute('data-managed-link-click', 'target');
+    try { await papijoHarnessClick('[data-managed-link-click="target"]', options); }
+    finally { element.removeAttribute('data-managed-link-click'); }
+    await new Promise(function (resolve) { setTimeout(resolve, 60); });
+  }
+  function toolbar(ctx) {
+    var balloon = ctx.editor.plugins.get('ContextualBalloon');
+    return Array.from(balloon.view.content).flatMap(function (view) { return view.content ? Array.from(view.content) : [view]; })
+      .find(function (view) { return view.items && Array.from(view.items).some(function (item) { return item.papijoManagedImageButton; }); });
+  }
+  try {
+    H5P.getPath = function () { return '/fixture-large.svg'; };
+    for (var captioned of [false, true]) {
+      var url = 'https://example.com/papijo-editor-click-probe?captioned=' + captioned;
+      var marker = '<span class="papijo-inline-image" data-papijo-inline-image-id="linked-click" data-papijo-inline-image-width="25">' +
+        (captioned ? '<span class="papijo-image-caption">Unlinked caption</span>' : '') + '</span>';
+      var ctx = await h.open('<p>Cursor before image</p><p>' + marker + '</p><p>Cursor after image</p>', [definition]); contexts.push(ctx);
+      var editor = ctx.editor, root = editor.editing.view.getDomRoot(), target = await h.selectImage(ctx);
+      editor.execute('link', url);
+      h.caret(ctx, 0);
+      editor.ui.update(); await new Promise(function (resolve) { setTimeout(resolve, 60); });
+      var image = root.querySelector('img'); await image.decode();
+      var events = [];
+      function record(event) { events.push({ event: event, path: event.composedPath().filter(function (node) { return node.nodeType === 1; })
+        .map(function (node) { return node.tagName + (node.className ? '.' + String(node.className).replace(/\s+/g, '.') : ''); }) }); }
+      root.addEventListener('click', record);
+      var before = await papijoHarnessNavigations(), data = editor.getData(), version = editor.model.document.version;
+      var anchor = image.closest('a'), dom = anchor.outerHTML;
+      for (var repeat = 0; repeat < 2; repeat++) await click(image);
+      var after = await papijoHarnessNavigations(); root.removeEventListener('click', record);
+      var outcome = { captioned: captioned, editingDocument: window !== top, anchorEditable: anchor.isContentEditable,
+        href: anchor.getAttribute('href'), dom: dom, defaultPrevented: events.map(function (record) { return record.event.defaultPrevented; }),
+        trustedClicks: events.every(function (record) { return record.event.isTrusted; }), path: events[0] && events[0].path,
+        navigations: after.slice(before.length), selected: editor.model.document.selection.getSelectedElement() === target,
+        imageToolbar: !!toolbar(ctx), linkUi: editor.plugins.get('ContextualBalloon').visibleView === editor.plugins.get('LinkUI').actionsView };
+      outcomes.push(outcome);
+      h.assert(editor.getData() === data && editor.model.document.version === version && target.getAttribute('linkHref') === url,
+        'Repeated image clicks preserve managed data/history and actual link');
+      // Modifier-click must not reach native LinkEditing's explicit popup path.
+      before = await papijoHarnessNavigations();
+      await click(image, { position: { x: image.clientWidth / 2, y: image.clientHeight * 0.98 }, modifiers: ['Control'] });
+      after = await papijoHarnessNavigations();
+      h.assert(after.length === before.length && editor.model.document.selection.getSelectedElement() === target,
+        'Managed modifier-click cannot navigate the frame, top window or a popup');
+      if (captioned) {
+        var caption = root.querySelector('.papijo-image-caption'); before = await papijoHarnessNavigations();
+        h.caret(ctx, 0); await click(caption); after = await papijoHarnessNavigations();
+        h.assert(after.length === before.length && editor.model.document.selection.getSelectedElement() === target && !caption.closest('a'),
+          'Caption click selects the atomic image without navigation or linking caption');
+        var captionButton = Array.from(toolbar(ctx).items).find(function (button) {
+          return button.label === H5PEditor.t('H5PEditor.AdvancedTextPapiJoTooltip', 'editImageCaption');
+        });
+        h.assert(captionButton && captionButton.isEnabled, 'Caption Edit remains available after image/caption clicks');
+        await click(captionButton.element);
+        var captionForm = editor.commands.get('papijoImageCaption').form;
+        h.assert(document.activeElement === captionForm.input && captionForm.input.value === 'Unlinked caption', 'Caption Edit opens its captured form');
+        await click(captionForm.cancel.element);
+      }
+
+      var chain = Array.from(toolbar(ctx).items).find(function (button) {
+        return button.label === H5PEditor.t('H5PEditor.AdvancedTextPapiJoTooltip', 'linkInlineImage');
+      });
+      h.assert(chain && chain.isEnabled, 'Link image action remains available');
+      await click(chain.element);
+      var ui = editor.plugins.get('LinkUI'), balloon = editor.plugins.get('ContextualBalloon');
+      if (balloon.visibleView === ui.actionsView) { await click(ui.actionsView.editButtonView.element); }
+      h.assert(balloon.visibleView === ui.formView && ui.formView.urlInputView.fieldView.element.value === url, 'Native Link form retains real href');
+      var edited = url + '&edited=1', beforeEdit = editor.getData();
+      ui.formView.urlInputView.fieldView.element.value = edited; await click(ui.formView.saveButtonView.element);
+      var afterEdit = editor.getData(); h.assert(target.getAttribute('linkHref') === edited, 'Native Link Edit applies after direct image click');
+      editor.execute('undo'); h.assert(editor.getData() === beforeEdit, 'Link Edit is one Undo');
+      editor.execute('redo'); h.assert(editor.getData() === afterEdit, 'Link Edit is one Redo');
+      await h.selectImage(ctx); root.focus(); await papijoHarnessPressFocusedKey('Control+k');
+      h.assert(balloon.visibleView === ui.formView, 'Ctrl+K remains available after linked image selection');
+      await click(ui.formView.cancelButtonView.element);
+      h.assert(target.getAttribute('linkHref') === edited && (!captioned || target.getAttribute('papijoImageCaption') === 'Unlinked caption'),
+        'Link UI retains href and caption state');
+      var altButton = Array.from(toolbar(ctx).items).find(function (button) { return button.label === editor.t('Change image text alternative'); });
+      await click(altButton.element);
+      var altForm = balloon.visibleView;
+      h.assert(altForm.labeledInput.fieldView.element.value === definition.alt, 'ALT remains usable on clicked linked image');
+      await click(altForm.cancelButtonView.element);
+      var replaceButton = Array.from(toolbar(ctx).items).find(function (button) { return button.papijoManagedImageButton; });
+      await click(replaceButton.element);
+      var picker = ctx.widget.inlineImageUi;
+      h.assert(picker.open && picker.target === target && picker.$alt.val() === '', 'Replace captures clicked linked image and still requires new ALT');
+      var pickerCancel = picker.$form.find('button[type="button"]').last()[0];
+      pickerCancel.setAttribute('data-managed-link-cancel', 'target');
+      await papijoHarnessPressKey('[data-managed-link-cancel="target"]', 'Enter');
+      pickerCancel.removeAttribute('data-managed-link-cancel');
+      h.assert(!picker.open && target.getAttribute('linkHref') === edited, 'Replace Cancel preserves clicked linked occurrence');
+      var handles = Array.from(editor.ui.view.body).filter(function (view) { return view.element?.classList.contains('papijo-image-resize-handle'); });
+      h.assert(handles.length === 4 && handles.every(function (handle) { return handle.element.getBoundingClientRect().width > 0; }), 'Four Resize handles remain addressable');
+      var beforeResize = editor.getData(); root.focus(); await papijoHarnessPressFocusedKey('Tab');
+      h.assert(document.activeElement === handles[3].element, 'Linked image keeps sequential Tab entry to southeast handle');
+      await papijoHarnessPressFocusedKey('ArrowRight'); await papijoHarnessPressFocusedKey('Escape');
+      var afterResize = editor.getData();
+      h.assert(target.getAttribute('papijoImageWidth') === 25.1 && target.getAttribute('linkHref') === edited &&
+        (!captioned || target.getAttribute('papijoImageCaption') === 'Unlinked caption'), 'Linked keyboard Resize preserves URL and caption');
+      editor.execute('undo'); h.assert(editor.getData() === beforeResize, 'Linked Resize is one Undo');
+      editor.execute('redo'); h.assert(editor.getData() === afterResize, 'Linked Resize is one Redo');
+      editor.execute('undo');
+      root.focus(); await papijoHarnessPressFocusedKey('Escape');
+      h.caret(ctx, 0); editor.ui.update();
+      await new Promise(function (resolve) { setTimeout(resolve, 60); });
+
+      // A real runtime click must reach the browser's default navigation path.
+      // Its anchor is outside the editable root; the production editor guard
+      // must neither see nor cancel it, even in the same test document.
+      var runtimeRoot = document.createElement('div'); runtimeRoot.className = 'h5p-advanced-text';
+      runtimeRoot.style.width = Math.min(320, innerWidth - 16) + 'px';
+      var parsed = new DOMParser().parseFromString(editor.getData(), 'text/html');
+      Array.from(parsed.body.childNodes).forEach(function (node) { runtimeRoot.appendChild(node); });
+      document.getElementById('fixture').appendChild(runtimeRoot);
+      var runtime = new H5P.AdvancedTextPapiJoInlineImageRuntime(runtimeRoot, 17, [definition]);
+      try {
+        runtime.initialize(); var runtimeImage = runtimeRoot.querySelector('img'); await runtimeImage.decode();
+        var runtimeAnchor = runtimeImage.closest('a'), runtimeCaption = runtimeRoot.querySelector('.papijo-image-caption');
+        h.assert(runtimeAnchor.getAttribute('href') === edited && !runtimeAnchor.hasAttribute('target') &&
+          (!captioned || runtimeCaption && !runtimeCaption.closest('a')), 'Runtime retains active image-only href and unlinked caption');
+        var runtimeEvents = []; runtimeRoot.addEventListener('click', function (event) { runtimeEvents.push(event); });
+        before = await papijoHarnessNavigations(); await click(runtimeImage); after = await papijoHarnessNavigations();
+        var attempts = after.slice(before.length);
+        h.assert(attempts.length === 1 && attempts[0].navigation && attempts[0].url === edited &&
+          attempts[0].context === (window !== top ? 'editor-frame' : 'top-window') && runtimeEvents.length === 1 && !runtimeEvents[0].defaultPrevented,
+          'Runtime real image click still causes normal browsing-context navigation: ' + JSON.stringify(attempts));
+        outcome.runtimeNavigations = attempts;
+      }
+      finally { runtime.destroy(); runtimeRoot.remove(); }
+      await h.close(ctx); contexts.pop();
+    }
+    h.results.push({ managedImageClick: outcomes });
+    h.assert(outcomes.every(function (outcome) { return outcome.navigations.length === 0 && outcome.selected && outcome.imageToolbar && outcome.trustedClicks; }),
+      'Editor image clicks must never navigate any browsing context: ' + JSON.stringify(outcomes));
+  }
+  finally { for (var ctx of contexts) await h.close(ctx); H5P.getPath = originalPath; }
 };

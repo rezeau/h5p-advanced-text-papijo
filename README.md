@@ -58,6 +58,15 @@ These structural actions preserve image links, ALT, wrapping and percentage size
 Lists, table cells, headings, soft breaks and multiple-image paragraphs are deferred.
 See the [Paragraph actions scope and verification](tests/INLINE-IMAGES-PARAGRAPH.md).
 
+Optional plain-text captions are an uncommitted development checkpoint. They
+belong to managed image occurrences, use one contextual Add/Edit form, preserve
+required ALT and managed files, and keep captions outside image links. Caption
+creation requires an eligible image-only root paragraph; existing captions can
+be edited or removed in other safe contexts. Explicit tiny image widths reserve
+a separate readable caption footprint. See the [Caption contract, verification
+and user-reported manual acceptance](tests/INLINE-IMAGES-CAPTION.md).
+User-reported manual acceptance: **PASS** in both H5P CLI and WordPress.
+
 Tooltip images are stored in the optional root `tooltipImages` semantic list.
 The annotated span contains only the sanitized tooltip text and, when needed,
 `data-papijo-tooltip-id`; image URLs and markup are never stored in the text

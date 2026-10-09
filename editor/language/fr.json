@@ -49,6 +49,14 @@
     "unableToRemoveTooltip": "Impossible de supprimer l’infobulle.",
     "tooltipCreated": "Infobulle créée.",
     "tooltipUpdated": "Infobulle mise à jour.",
-    "tooltipRemoved": "Infobulle supprimée."
+    "tooltipRemoved": "Infobulle supprimée.",
+    "addImageCaption": "Ajouter une légende",
+    "editImageCaption": "Modifier la légende",
+    "imageCaption": "Légende",
+    "applyCaption": "Appliquer",
+    "removeImageCaption": "Supprimer la légende",
+    "captionTooLong": "La légende doit contenir au maximum 1 000 caractères Unicode.",
+    "captionInvalid": "Saisissez du texte sans caractères non valides.",
+    "captionTargetUnavailable": "Cette image a changé ou ne peut plus être modifiée. Fermez le formulaire et sélectionnez-la à nouveau."
   }
 }
