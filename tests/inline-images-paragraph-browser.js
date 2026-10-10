@@ -69,8 +69,60 @@ window.runPapijoInlineImageParagraph = async function (h) {
     ctx.editor.execute('redo'); assert(tree(ctx) === after, 'One Redo restores paragraph action');
   }
   function arrows(ctx) { return Array.from(ctx.editor.ui.view.body).filter(function (v) { return v.element && v.element.classList.contains('papijo-image-paragraph-arrow'); }); }
+  function captionMarker(text, extra) {
+    return marker(extra).replace('></span>', '><span class="papijo-image-caption">' + text + '</span></span>');
+  }
+  function positioning(ctx, label) {
+    var root = ctx.editor.editing.view.getDomRoot(), unit = root.querySelector('.image-inline');
+    var ir = unit.querySelector('img').getBoundingClientRect(), bounds = root.getBoundingClientRect();
+    var balloon = ctx.editor.plugins.get('ContextualBalloon');
+    var obstacles = Array.from(ctx.editor.ui.view.body).filter(function (v) {
+      return v.element && v.isVisible && v.element.classList.contains('papijo-image-resize-handle');
+    }).map(function (v) { return v.element.getBoundingClientRect(); });
+    if (balloon.visibleView) { obstacles.push(balloon.view.element.getBoundingClientRect()); }
+    obstacles.push(ctx.editor.ui.view.toolbar.element.getBoundingClientRect());
+    var caption = unit.querySelector('.papijo-image-caption');
+    if (caption) { obstacles.push(caption.getBoundingClientRect()); }
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), text;
+    while ((text = walker.nextNode())) {
+      if (unit.contains(text)) { continue; }
+      var range = document.createRange(); range.selectNodeContents(text);
+      obstacles.push.apply(obstacles, Array.from(range.getClientRects()));
+    }
+    function overlaps(a, b) { return b.width > 0 && b.height > 0 && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top; }
+    var positions = arrows(ctx).map(function (view, index) {
+      assert(!root.contains(view.element) && !view.element.closest('a') && view.element.tabIndex === -1,
+        label + ': body ownership, link exclusion and Tab order stay intact');
+      if (!view.isVisible) { return null; }
+      var box = view.element.getBoundingClientRect();
+      assert(box.width === 28 && box.height === 24, label + ': button dimensions stay 28x24');
+      assert(Math.abs((box.left + box.right) / 2 - (ir.left + ir.right) / 2) < 0.1,
+        label + ': horizontal center uses the image, not the caption footprint');
+      assert(box.bottom <= (ir.top + ir.bottom) / 2 - 1.9 || box.top >= (ir.top + ir.bottom) / 2 + 1.9,
+        label + ': image center remains available for image selection');
+      if (index === 0) {
+        var baseTop = ir.top - 12;
+        assert(box.top >= baseTop - 0.1 && box.top <= ir.top + 2.1, label + ': Before adjustment stays bounded to the upper image edge');
+        assert(Math.abs(box.top - baseTop) < 0.1 || (balloon.visibleView &&
+          Math.abs(box.top - balloon.view.element.getBoundingClientRect().bottom - 4) < 0.1), label + ': only the prototype balloon adjustment is used');
+      }
+      else { assert(Math.abs(box.top - ir.bottom + 12) < 0.1, label + ': After straddles the lower image edge'); }
+      assert(box.left >= bounds.left && box.right <= bounds.right && box.top >= bounds.top && box.bottom <= bounds.bottom &&
+        box.left >= 0 && box.right <= innerWidth && box.top >= 4 && box.bottom <= innerHeight - 4,
+        label + ': control stays inside the editor and viewport');
+      obstacles.forEach(function (other) { assert(!overlaps(box, other), label + ': avoids caption/text/four handles/balloons/main toolbar'); });
+      obstacles.push(box);
+      return { left: box.left, top: box.top, imageBottom: ir.bottom };
+    });
+    assert(dropdown(ctx) || balloon.visibleView, label + ': native contextual UI remains available');
+    return { image: ir, positions: positions };
+  }
   function dropdown(ctx) {
-    var toolbar = ctx.editor.plugins.get('ContextualBalloon').visibleView;
+    var balloon = ctx.editor.plugins.get('ContextualBalloon');
+    // Linked images may show the established image toolbar alongside Link UI.
+    var toolbar = Array.from(balloon.view.content).flatMap(function (view) {
+      return view.content ? Array.from(view.content) : [view];
+    }).find(function (view) { return view.items && Array.from(view.items).some(function (item) { return item.papijoManagedImageButton; }); });
     return toolbar && toolbar.items && Array.from(toolbar.items).find(function (v) { return v.buttonView && v.buttonView.label === H5PEditor.t('', 'imageParagraphActions'); });
   }
   async function keyboardMenu(ctx) {
@@ -216,11 +268,110 @@ window.runPapijoInlineImageParagraph = async function (h) {
     }
     h.results.push('Paragraph native keyboard EN/FR: real Alt+F10/arrows/Enter/Space/Escape, no navigation history, real Ctrl+Z/Y, accepted Tab Resize path');
 
+    var geometryCases = [
+      { name: 'uncaptioned' }, { name: 'captioned', caption: true },
+      { name: 'linked caption', caption: true, link: true },
+      { name: 'resized caption', caption: true, width: 40.2 },
+      { name: 'tiny caption', caption: true, width: 0.1 }
+    ], geometryCount = 0, containerCount = 0;
+    for (var geometryCase of geometryCases) {
+      for (var presentation of ['inline', 'alignLeft', 'alignRight']) {
+        var extra = (geometryCase.width ? 'data-papijo-inline-image-width="' + geometryCase.width + '" ' : '') +
+          (presentation === 'inline' ? '' : 'data-papijo-inline-image-style="' + presentation + '" ') +
+          (geometryCase.link ? 'data-papijo-inline-image-link="https://example.org/image"' : '');
+        var occurrence = geometryCase.caption ? captionMarker('A caption with several words across more than one line.', extra) : marker(extra);
+        ctx = await open('<p>Preceding paragraph text.</p><p>' + occurrence + '</p><p>Following paragraph text.</p>');
+        ctx.shell[0].style.paddingTop = '180px'; await h.selectImage(ctx); await settle(ctx);
+        var savedTree = tree(ctx), savedStore = JSON.stringify(ctx.store.params);
+        positioning(ctx, geometryCase.name + '/' + presentation + '/' + innerWidth);
+        assert(dropdown(ctx).isEnabled, 'Eligible image retains Paragraph dropdown independently of external visibility');
+        if (geometryCase.width === 0.1) {
+          assert(arrows(ctx).every(function (view) { return !view.isVisible; }), 'Tiny explicit width uses dropdown fallback');
+        }
+        assert(tree(ctx) === savedTree && JSON.stringify(ctx.store.params) === savedStore, 'Geometry measurement never changes managed content/history');
+        geometryCount++; await close(ctx);
+      }
+    }
+    for (var short of [false, true]) {
+      H5P.getPath = function () { return short ? '/caption-size-32-16.svg' : '/fixture-small.svg'; };
+      for (presentation of ['inline', 'alignLeft', 'alignRight']) {
+        ctx = await open('<p>Before text.</p><p>' + captionMarker('Narrow caption', presentation === 'inline' ? '' :
+          'data-papijo-inline-image-style="' + presentation + '"') + '</p><p>After text.</p>');
+        ctx.shell[0].style.width = '160px'; ctx.shell[0].style.paddingTop = '180px';
+        await h.selectImage(ctx); await settle(ctx); positioning(ctx, '160px container/' + presentation + '/short=' + short);
+        if (short) {
+          assert(arrows(ctx).every(function (view) { return !view.isVisible; }), 'Short image has no crowded external controls');
+          var fallback = await keyboardMenu(ctx);
+          assert(fallback.toolbarView.items.get(1).isEnabled && fallback.toolbarView.items.get(2).isEnabled,
+            'Both Before and After remain enabled in the native dropdown when external controls hide');
+          await papijoHarnessPressFocusedKey('Escape');
+        }
+        containerCount++; await close(ctx);
+      }
+    }
+    H5P.getPath = function (path) { return path.includes('large') ? '/fixture-large.svg' : '/fixture-small.svg'; };
+    for (presentation of ['inline', 'alignLeft', 'alignRight']) {
+      ctx = await open('<p>Before text.</p><p>' + marker(presentation === 'inline' ? '' : 'data-papijo-inline-image-style="' + presentation + '"') + '</p><p>After text.</p>');
+      // Give this comparison's 128px source room below both existing float
+      // clamps. The matrix above separately tests truly narrow 160px editors.
+      ctx.shell[0].style.width = Math.max(180, innerWidth) + 'px';
+      ctx.shell[0].style.paddingTop = '180px'; await h.selectImage(ctx); await settle(ctx);
+      var noCaption = positioning(ctx, 'no caption/' + presentation), beforeCaptionData = ctx.editor.getData();
+      image = h.imageModel(ctx);
+      for (var captionText of ['Short caption', 'A much longer caption with enough words to occupy several lines in the narrow caption footprint.']) {
+        ctx.editor.model.change(function (writer) { writer.setAttribute('papijoImageCaption', captionText, image); });
+        await h.selectImage(ctx); await settle(ctx);
+        var withCaption = positioning(ctx, 'caption-independent/' + presentation);
+        assert(Math.abs(noCaption.image.width - withCaption.image.width) < 0.1 && Math.abs(noCaption.image.height - withCaption.image.height) < 0.1 &&
+          Math.abs(noCaption.image.top - withCaption.image.top) < 0.1 && Math.abs(noCaption.image.left - withCaption.image.left) < 0.1,
+          'Adding/growing a caption preserves identical image geometry: ' + presentation + '/' + innerWidth + ' ' +
+          JSON.stringify({ before: noCaption.image.toJSON(), after: withCaption.image.toJSON() }));
+        withCaption.positions.forEach(function (position, index) {
+          if (position && noCaption.positions[index]) {
+            assert(Math.abs(position.top - noCaption.positions[index].top) < 0.1 && Math.abs(position.left - noCaption.positions[index].left) < 0.1,
+              'Caption height does not displace a safely visible Before/After anchor');
+          }
+        });
+      }
+      ctx.editor.execute('undo'); ctx.editor.execute('undo');
+      assert(ctx.editor.getData() === beforeCaptionData, 'Caption history remains exact after positioning checks');
+      await close(ctx);
+    }
+    h.results.push({ paragraphPositioning: { viewport: innerWidth, geometryCases: geometryCount, narrowContainerCases: containerCount,
+      captionIndependent: true, presentations: ['Inline', 'Wrap left', 'Wrap right'] } });
+    for (presentation of ['inline', 'alignLeft', 'alignRight']) {
+      ctx = await open('<p>Before text.</p><p>' + captionMarker('Explicit 8em footprint', 'data-papijo-inline-image-width="5.5" ' +
+        (presentation === 'inline' ? '' : 'data-papijo-inline-image-style="' + presentation + '"')) + '</p><p>After text.</p>');
+      ctx.shell[0].style.paddingTop = '180px'; await h.selectImage(ctx); await settle(ctx);
+      var footprint = ctx.editor.editing.view.getDomRoot().querySelector('.image-inline').getBoundingClientRect();
+      var footprintGeometry = positioning(ctx, '8em footprint/' + presentation);
+      assert(footprint.width > footprintGeometry.image.width + 1, 'Caption fallback remains wider than the small explicit image');
+      assert(h.imageModel(ctx).getAttribute('papijoImageWidth') === 5.5, 'Positioning does not alter the explicit percentage');
+      if (footprintGeometry.image.width >= 28 && footprintGeometry.image.height >= 32 &&
+          footprintGeometry.image.left >= 0 && footprintGeometry.image.right <= innerWidth) {
+        var clickImage = ctx.editor.editing.view.getDomRoot().querySelector('img');
+        clickImage.setAttribute('data-position-select', 'image'); var clickData = ctx.editor.getData();
+        await papijoHarnessClick('[data-position-select="image"]'); await settle(ctx);
+        await papijoHarnessClick('[data-position-select="image"]'); await settle(ctx);
+        assert(ctx.editor.model.document.selection.getSelectedElement() === h.imageModel(ctx) && ctx.editor.getData() === clickData,
+          'Repeated clicks still select the resized image rather than activate a boundary control');
+        clickImage.removeAttribute('data-position-select');
+      }
+      await close(ctx);
+    }
+
     ctx = await open('<p>' + marker('data-papijo-inline-image-width="0.1" data-papijo-inline-image-link="https://example.org/image"') + '</p>');
     ctx.shell[0].style.paddingTop = '240px';
     await h.selectImage(ctx); await settle(ctx);
     var controls = arrows(ctx);
-    assert(controls.length === 2 && controls.every(function (a) { return a.isVisible && a.element.tabIndex === -1 && a.label; }), 'Image-only external arrows visible/named with no extra Tab stops');
+    assert(controls.length === 2 && controls.every(function (a) { return !a.isVisible && a.element.tabIndex === -1 && a.label; }), 'Tiny image hides both named body controls without extra Tab stops');
+    menu = await keyboardMenu(ctx);
+    assert(menu.toolbarView.items.get(1).isEnabled && menu.toolbarView.items.get(2).isEnabled, 'Tiny image retains native Before/After fallback');
+    await papijoHarnessPressFocusedKey('Escape'); await close(ctx);
+    ctx = await open('<p>Before text.</p><p>' + captionMarker('Caption stays inside the entire image paragraph.',
+      'data-papijo-inline-image-link="https://example.org/image"') + '</p><p>After text.</p>');
+    ctx.shell[0].style.paddingTop = '240px'; await h.selectImage(ctx); await settle(ctx); controls = arrows(ctx);
+    assert(controls.every(function (a) { return a.isVisible; }), 'Displayable image has both compact external controls');
     var obstacles = Array.from(ctx.editor.ui.view.body).filter(function (v) { return v.element && v.isVisible && v.element.classList.contains('papijo-image-resize-handle'); });
     obstacles.push(ctx.editor.plugins.get('ContextualBalloon').visibleView);
     controls.forEach(function (arrow) {
@@ -228,7 +379,7 @@ window.runPapijoInlineImageParagraph = async function (h) {
       var labelIds = arrow.element.getAttribute('aria-labelledby');
       var accessibleName = labelIds ? labelIds.split(/\s+/).map(function (id) { return document.getElementById(id).textContent; }).join(' ') : arrow.element.getAttribute('aria-label');
       assert(accessibleName === arrow.label, 'External arrow has its translated native accessible name');
-      assert(a.width === 28 && a.height === 24 && !rootContains(ctx, arrow.element), 'Tiny-image arrow is external, compact and nonpersistent');
+      assert(a.width === 28 && a.height === 24 && !rootContains(ctx, arrow.element), 'Image-edge arrow is external, compact and nonpersistent');
       obstacles.forEach(function (other) { var b = other.element.getBoundingClientRect(); assert(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom, 'Arrows avoid resize handles/contextual toolbar at narrow viewport'); });
     });
     var previousTop = controls[1].element.getBoundingClientRect().top;
@@ -248,7 +399,11 @@ window.runPapijoInlineImageParagraph = async function (h) {
         'External arrows avoid native Link actions/form balloon');
     });
     await papijoHarnessPressFocusedKey('Escape'); linkButton.destroy(); await h.selectImage(ctx); await settle(ctx);
-    // A tiny image still has four handles; arrows yield to an active resize.
+    var captionButton = ctx.editor.ui.componentFactory.create('papijoImageCaption'); captionButton.render(); captionButton.fire('execute'); await settle(ctx);
+    var captionForm = ctx.editor.commands.get('papijoImageCaption').form;
+    assert(ctx.editor.plugins.get('ContextualBalloon').visibleView === captionForm, 'Caption form is actually open for collision checks');
+    positioning(ctx, 'Caption form collision'); captionForm.cancel.element.click(); captionButton.destroy(); await h.selectImage(ctx); await settle(ctx);
+    // All four handles remain owned by Resize; arrows yield to its active preview.
     await papijoHarnessBeginResize('.papijo-image-resize-southEast:not(.ck-hidden)', 12, 6); await settle(ctx);
     assert(controls.every(function (view) { return !view.isVisible; }), 'External arrows hide throughout pointer resize preview');
     document.dispatchEvent(new PointerEvent('pointerup', { pointerId: 99, bubbles: true })); await settle(ctx);
@@ -259,9 +414,41 @@ window.runPapijoInlineImageParagraph = async function (h) {
     await papijoHarnessBeginResize('.papijo-image-resize-southEast:not(.ck-hidden)', 12, 6); await settle(ctx);
     window.dispatchEvent(new Event('blur')); await papijoHarnessEndResize(); await h.selectImage(ctx); await settle(ctx);
     assert(tree(ctx) === baseline && controls.every(function (view) { return view.isVisible; }), 'Blur cancellation restores arrows with no content/history change');
+    positioning(ctx, 'resize recovery');
+    var followingView = ctx.editor.editing.mapper.toViewElement(paragraphs(ctx).slice(-1)[0]);
+    var following = ctx.editor.editing.view.domConverter.mapViewToDom(followingView);
+    var textRange = document.createRange(); textRange.selectNodeContents(following);
+    var textRect = textRange.getBoundingClientRect(), afterBox = controls[1].element.getBoundingClientRect();
+    following.style.transform = 'translate(' + (afterBox.left - textRect.left) + 'px,' + (afterBox.top - textRect.top) + 'px)';
+    window.dispatchEvent(new Event('resize')); await settle(ctx);
+    assert(!controls[1].isVisible && dropdown(ctx).isEnabled, 'Rendered surrounding text blocks After without displacing it far away');
+    following.style.transform = ''; window.dispatchEvent(new Event('resize')); await settle(ctx);
+    assert(controls[1].isVisible, 'After recovers at its original image boundary when text clears');
+    var editableView = ctx.editor.editing.view.document.getRoot();
+    ctx.editor.editing.view.change(function (writer) {
+      writer.setStyle({ height: '16px', 'min-height': '0', 'max-height': '16px', overflow: 'hidden' }, editableView);
+    }); await settle(ctx);
+    assert(controls.every(function (view) { return !view.isVisible; }) && dropdown(ctx).isEnabled,
+      'Clipped editor bounds hide external controls without disabling the native dropdown');
+    ctx.editor.editing.view.change(function (writer) {
+      ['height', 'min-height', 'max-height', 'overflow'].forEach(function (key) { writer.removeStyle(key, editableView); });
+    }); await settle(ctx); positioning(ctx, 'restored editor bounds');
+    var coordinateWrites = 0, coordinateObserver = new MutationObserver(function (records) { coordinateWrites += records.length; });
+    controls.forEach(function (view) { coordinateObserver.observe(view.element, { attributes: true, attributeFilter: ['style'] }); });
+    try {
+      var idleTree = tree(ctx); ctx.editor.ui.update(); ctx.editor.ui.update(); await settle(ctx);
+      assert(coordinateWrites === 0 && tree(ctx) === idleTree, 'Unchanged UI updates cause no recurring coordinate/history writes');
+    }
+    finally { coordinateObserver.disconnect(); }
+    baseline = tree(ctx);
     await papijoHarnessClick('.papijo-image-paragraph-after:not(.ck-hidden)'); await settle(ctx);
     assert(ctx.editor.model.document.selection.isCollapsed && ctx.editor.model.document.selection.anchor.parent.isEmpty && !ctx.widget.inlineImageUi,
       'Real external arrow inserts paragraph without link/picker activation');
+    assert(ctx.editor.model.document.selection.anchor.parent.previousSibling === h.imageModel(ctx).parent &&
+      h.imageModel(ctx).getAttribute('papijoImageCaption') === 'Caption stays inside the entire image paragraph.',
+      'Lower image-edge After inserts after the whole captioned paragraph');
+    await papijoHarnessPressFocusedKey('Control+z'); assert(tree(ctx) === baseline, 'Actual external After is one Undo transaction');
+    await papijoHarnessPressFocusedKey('Control+y'); await settle(ctx);
     await h.selectImage(ctx); await settle(ctx);
     await papijoHarnessClick('.papijo-image-paragraph-before:not(.ck-hidden)');
     assert(ctx.editor.model.document.selection.anchor.parent.isEmpty, 'External Before arrow shares command semantics');
@@ -282,7 +469,7 @@ window.runPapijoInlineImageParagraph = async function (h) {
     assert(globalListeners.length === 0, 'Repeated destroy/recreate releases all newly registered document/window listeners: ' +
       globalListeners.map(function (entry) { return entry.type + ':' + (entry.callback.name || 'anonymous'); }).join(','));
     assert(observedTargets.every(function (targets) { return targets.size === 0; }), 'Every created ResizeObserver releases its observed targets');
-    h.results.push('Paragraph external arrows: tiny/160px geometry, real pointer commands, repositioning, multiple instances, destroy/recreate and stale callback protection');
+    h.results.push('Paragraph external arrows: image-edge geometry, tiny/short fallback, caption independence, rendered-text and balloon guards, pointer commands/history, scroll/resize recovery, multiple instances and complete cleanup');
   }
   finally {
     for (var remaining of contexts.slice()) { await h.close(remaining); }

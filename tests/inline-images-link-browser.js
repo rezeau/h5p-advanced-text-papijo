@@ -412,16 +412,24 @@ window.runPapijoManagedLinkClick = async function (h) {
   async function click(element, options) {
     // Use an exposed point inside the image; native balloons may cover its
     // center while preserving other directly clickable parts of the image.
-    if (element.tagName === 'IMG' && !options) {
+    if (element.tagName === 'IMG') {
       var rect = element.getBoundingClientRect();
-      for (var point of [[0.5, 0.98], [0.98, 0.98], [0.02, 0.98], [0.5, 0.8], [0.5, 0.5], [0.2, 0.8], [0.8, 0.8]]) {
-        if (document.elementFromPoint(rect.left + rect.width * point[0], rect.top + rect.height * point[1]) === element) {
-          options = { position: { x: rect.width * point[0], y: rect.height * point[1] } }; break;
+      var position = options && options.position;
+      if (!position || document.elementFromPoint(rect.left + position.x, rect.top + position.y) !== element) {
+        position = null;
+        // Boundary controls and corner handles can cover the old bottom-only
+        // probes. Keep modifier keys, and find an actual image hit point.
+        for (var point of [[0.5, 0.98], [0.98, 0.98], [0.02, 0.98], [0.5, 0.8], [0.5, 0.5],
+          [0.2, 0.8], [0.8, 0.8], [0.2, 0.2], [0.5, 0.2], [0.8, 0.2]]) {
+          if (document.elementFromPoint(rect.left + rect.width * point[0], rect.top + rect.height * point[1]) === element) {
+            position = { x: rect.width * point[0], y: rect.height * point[1] }; break;
+          }
         }
       }
-      if (!options) { throw Error('No exposed image hit point: ' + JSON.stringify({ rect: rect.toJSON(), viewport: [innerWidth, innerHeight],
+      if (!position) { throw Error('No exposed image hit point: ' + JSON.stringify({ rect: rect.toJSON(), viewport: [innerWidth, innerHeight],
         hit: document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.outerHTML.slice(0, 300),
         toolbarRect: document.querySelector('.ck-balloon-panel')?.getBoundingClientRect().toJSON(), widget: element.closest('.image-inline')?.className })); }
+      options = Object.assign({}, options, { position: position });
     }
     element.setAttribute('data-managed-link-click', 'target');
     try { await papijoHarnessClick('[data-managed-link-click="target"]', options); }

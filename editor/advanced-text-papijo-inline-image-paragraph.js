@@ -151,7 +151,8 @@
       event.preventDefault(); event.stopImmediatePropagation(); closeMenus(); focus();
     }
     function intersects(a, b) {
-      return b.width > 0 && b.height > 0 && a.left < b.right + 4 && a.right > b.left - 4 && a.top < b.bottom + 4 && a.bottom > b.top - 4;
+      var gap = b.papijoCaption ? 2 : 4;
+      return b.width > 0 && b.height > 0 && a.left < b.right + gap && a.right > b.left - gap && a.top < b.bottom + gap && a.bottom > b.top - gap;
     }
     function ownedResizeControls() {
       return Array.from(editor.ui.view.body).filter(function (view) {
@@ -172,22 +173,51 @@
       var balloon = editor.plugins.get('ContextualBalloon');
       var obstacles = ownedResizeControls().map(function (view) { return view.element.getBoundingClientRect(); });
       if (balloon.visibleView) { obstacles.push(balloon.view.element.getBoundingClientRect()); }
-      var rect = image && image.getBoundingClientRect();
+      var editable = editor.editing.view.getDomRoot(), bounds = editable.getBoundingClientRect();
+      if (visible) {
+        var caption = image.querySelector('.papijo-image-caption');
+        if (caption) {
+          var captionRect = caption.getBoundingClientRect();
+          captionRect.papijoCaption = true; obstacles.push(captionRect);
+        }
+        // Measure rendered text runs, not paragraph boxes: floats can leave a
+        // paragraph box covering space that contains no text.
+        var walker = doc.createTreeWalker(editable, win.NodeFilter.SHOW_TEXT), text;
+        while ((text = walker.nextNode())) {
+          if (image.contains(text)) { continue; }
+          var range = doc.createRange(); range.selectNodeContents(text);
+          Array.from(range.getClientRects()).forEach(function (rect) { obstacles.push(rect); });
+        }
+        obstacles.push(editor.ui.view.toolbar.element.getBoundingClientRect());
+      }
+      // Caption height/its 8em footprint must never become the visual anchor.
+      var img = image && image.querySelector('img'), rect = img && img.getBoundingClientRect();
       arrows.forEach(function (arrow, index) {
         arrow.target = visible ? state.image : null;
-        var show = visible && rect.width > 0 && rect.height > 0;
+        var show = visible && rect && rect.width > 0 && rect.height >= 32;
         if (show) {
           var left = Math.max(4, Math.min(win.innerWidth - 32, (rect.left + rect.right) / 2 - 14));
-          var top = index === 0 ? rect.top - 36 : rect.bottom + 12;
-          for (var attempt = 0; attempt < 12; attempt++) {
-            var box = { left: left, right: left + 28, top: top, bottom: top + 24 };
-            var hit = obstacles.find(function (other) { return intersects(box, other); });
-            if (!hit) { break; }
-            top = index === 0 ? hit.top - 30 : hit.bottom + 6;
+          var top = index === 0 ? rect.top - 12 : rect.bottom - 12;
+          if (index === 0 && balloon.visibleView) {
+            var balloonRect = balloon.view.element.getBoundingClientRect();
+            if (intersects({ left: left, right: left + 28, top: top, bottom: top + 24 }, balloonRect)) {
+              top = balloonRect.bottom + 4;
+            }
           }
-          show = top >= 4 && top + 24 <= win.innerHeight - 4 &&
-            !obstacles.some(function (other) { return intersects({ left: left, right: left + 28, top: top, bottom: top + 24 }, other); });
-          if (show) { arrow.element.style.left = left + 'px'; arrow.element.style.top = top + 'px'; }
+          var box = { left: left, right: left + 28, top: top, bottom: top + 24, width: 28, height: 24 };
+          // Only the prototype's bounded balloon adjustment is allowed. The
+          // dropdown remains available when an external button cannot fit.
+          var middle = (rect.top + rect.bottom) / 2;
+          show = left === (rect.left + rect.right) / 2 - 14 &&
+            (box.bottom <= middle - 2 || box.top >= middle + 2) &&
+            (index !== 0 || top <= rect.top + 2) && top >= 4 && top + 24 <= win.innerHeight - 4 &&
+            left >= bounds.left && left + 28 <= bounds.right && top >= bounds.top && top + 24 <= bounds.bottom &&
+            !obstacles.some(function (other) { return intersects(box, other); });
+          if (show) {
+            if (arrow.element.style.left !== left + 'px') { arrow.element.style.left = left + 'px'; }
+            if (arrow.element.style.top !== top + 'px') { arrow.element.style.top = top + 'px'; }
+            obstacles.push(box);
+          }
         }
         if (arrow.isVisible !== !!show) { arrow.isVisible = !!show; }
         arrow.element.tabIndex = -1;
