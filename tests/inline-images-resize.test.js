@@ -32,7 +32,7 @@ test('explicit 100 and reset/default remain distinct without changing definition
   assert.deepEqual(semantics.find(f => f.name === 'inlineImages').field.fields.map(f => f.name), ['id', 'image', 'alt']);
 });
 
-test('resize is a declared local editor asset before the model adapter, with no dependency/version changes', () => {
+test('resize is a declared local editor asset before the model adapter in editor 1.2.0, with no additional dependencies', () => {
   const manifest = JSON.parse(fs.readFileSync('editor/library.json'));
   const paths = manifest.preloadedJs.map(item => item.path);
   assert.equal(paths.indexOf('advanced-text-papijo-inline-image-resize.js') + 1,
@@ -41,7 +41,7 @@ test('resize is a declared local editor asset before the model adapter, with no 
     paths.indexOf('advanced-text-papijo-inline-image-caption.js'));
   assert.equal(paths.indexOf('advanced-text-papijo-inline-image-caption.js') + 1,
     paths.indexOf('advanced-text-papijo-inline-image.js'));
-  assert.deepEqual([manifest.majorVersion, manifest.minorVersion, manifest.patchVersion], [1, 1, 2]);
+  assert.deepEqual([manifest.majorVersion, manifest.minorVersion, manifest.patchVersion], [1, 2, 0]);
   assert.ok(!manifest.preloadedDependencies && !manifest.editorDependencies);
 });
 

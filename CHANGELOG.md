@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0 (release candidate)
+
+- Added managed inline-image insertion with required ALT, contextual ALT editing, Inline / Wrap left / Wrap right controls and image replacement.
+- Added occurrence-local absolute HTTP/HTTPS image links, percentage resizing, corner resize handles, keyboard resizing and Reset size.
+- Added Paragraph Actions: Before/After paragraph insertion for an isolated managed image and isolation of a managed image from a mixed ordinary root paragraph. Improved image-edge control positioning.
+- Added occurrence-local plain-text captions with Add/Edit/Remove, normalization and responsive caption sizing. Add Caption requires an eligible image-only ordinary root paragraph; mixed text and table contexts remain unsupported for caption creation. Captions remain outside image links and do not replace required ALT.
+- Refined picker/editor UI, accessibility, keyboard behavior, editor navigation suppression and runtime image-link navigation.
+- Added managed-image copy/paste, semantic filtering, retained-definition lifecycle, saved-child copy and rendering/export regression coverage. CLI foreign-reference content exports retain their documented non-self-contained limitation.
+- Updated the companion editor to 1.2.0 and the runtime editor dependency to 1.2. Prepared public parent integrations require AccordionPapiJo 1.2.0, ColumnPapiJo 1.21.0 and InteractiveBookPapiJo 1.17.0 through Column 1.21.
+- Existing 1.2 content remains compatible without a content migration or synthetic inline-image data; the new semantic store is optional.
+
 ## 1.2.6
 
 - Fixed the missing French translation structure for tooltip images, preventing the editor language switch from English to French from throwing `translation[i] is undefined` when AdvancedTextPapiJo is nested in AccordionPapiJo.

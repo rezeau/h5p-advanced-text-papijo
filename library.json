@@ -2,8 +2,8 @@
   "title": "Advanced Text Papi Jo",
   "description": "Displays richly formatted text and supports author-defined tooltips that can be created, edited, and removed in the H5P editor.",
   "majorVersion": 1,
-  "minorVersion": 2,
-  "patchVersion": 6,
+  "minorVersion": 3,
+  "patchVersion": 0,
   "runnable": 1,
   "machineName": "H5P.AdvancedTextPapiJo",
   "author": "Joubel",
@@ -42,7 +42,7 @@
     {
       "machineName": "H5PEditor.AdvancedTextPapiJoTooltip",
       "majorVersion": 1,
-      "minorVersion": 1
+      "minorVersion": 2
     }
   ],
   "metadataSettings": {

@@ -1,5 +1,34 @@
 # AdvancedTextPapiJo verification
 
+The actual versioned 1.3.0 / editor 1.2.0 candidate audit is recorded in
+[RELEASE-CANDIDATE-1.3.0.md](RELEASE-CANDIDATE-1.3.0.md). Earlier phase reports
+retain historical versions and acceptance notes.
+
+The Node suite includes the installed H5P content upgrade engine: representative
+1.2 plain text, formatting, links, tooltips and tooltip images upgrade unchanged
+to 1.3, standalone and through all three prepared parents. It asserts that no
+`inlineImages` data is synthesized.
+
+Run the actual-candidate parent validator and dependency matrix separately:
+
+```powershell
+php tests/release-candidate-parents.test.php
+$env:PAPIJO_PHP_ROOT = 'C:\wamp64\www\wp-test\wp-content\plugins\h5p'
+php tests/release-candidate-parents.test.php
+Remove-Item Env:PAPIJO_PHP_ROOT
+```
+
+This matrix reads the actual AdvancedText/editor and public Accordion 1.2.0,
+Column 1.21.0 and InteractiveBook 1.17.0 checkouts. Only framework database
+lookup is replaced with filesystem lookup; the installed PHP validator and
+H5PCore perform validation, filtering and dependency traversal. Requested
+versions must match the unmodified manifests. No parent, CMS, library registry
+or content storage is changed. Four old-content cases and a managed image with
+caption run standalone and through every parent on each selected PHP core,
+including Column -> Accordion -> Text and Book -> Column -> Accordion -> Text.
+The matrix checks 30 cases per core. Private recovery Accordion 1.1.8 and broken
+1.1.7 are excluded from the public candidate contract.
+
 See [Paragraph actions](INLINE-IMAGES-PARAGRAPH.md) for the root-paragraph scope,
 separator policy, native/external UI, keyboard path and acceptance checklist.
 Its browser extension runs inside `/inline-images.html` on both native hosts.
@@ -139,9 +168,12 @@ standalone/Accordion/Column/Book content folders and metadata, using the actual
 installed clipboard to construct foreign references. Tests clean up those
 folders after each run, including failures. No image bytes or content parameters
 are read from live `content/text-01` or another manual-content folder.
-The installed `C:\my_first_h5p_environment` is used only for real core/CLI/library
-code and library semantics. The two copy/export tests still verify both semantic
-stores, exact paths, physical file existence and identical bytes. The documented
+The installed `C:\my_first_h5p_environment` is used only for real core/CLI code.
+The PHP lifecycle check reads actual public candidate manifests and semantics
+from the sibling repositories and requires their exact versions. Historical Node
+clipboard descriptors remain compatibility fixtures. The two copy/export tests
+still verify both semantic stores, exact paths, physical file existence and
+identical bytes. The documented
 CLI foreign-reference export limitation remains an explicit assertion.
 
 Additional PHP save/file/export checks (isolated temporary storage only):

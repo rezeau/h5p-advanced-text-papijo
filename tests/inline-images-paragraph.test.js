@@ -67,8 +67,8 @@ test('paragraph controller is an editor-only manifest asset before adapter; all 
   assert.ok(paths.indexOf('advanced-text-papijo-inline-image-resize.js') < paths.indexOf('advanced-text-papijo-inline-image-paragraph.js'));
   assert.ok(paths.indexOf('advanced-text-papijo-inline-image-paragraph.js') < paths.indexOf('advanced-text-papijo-inline-image.js'));
   assert.ok(!runtime.preloadedJs.some(a => a.path.includes('paragraph')));
-  assert.deepEqual([runtime.majorVersion, runtime.minorVersion, runtime.patchVersion], [1, 2, 6]);
-  assert.deepEqual([editor.majorVersion, editor.minorVersion, editor.patchVersion], [1, 1, 2]);
+  assert.deepEqual([runtime.majorVersion, runtime.minorVersion, runtime.patchVersion], [1, 3, 0]);
+  assert.deepEqual([editor.majorVersion, editor.minorVersion, editor.patchVersion], [1, 2, 0]);
   const en = JSON.parse(fs.readFileSync('editor/language/en.json')).libraryStrings;
   const fr = JSON.parse(fs.readFileSync('editor/language/fr.json')).libraryStrings;
   assert.deepEqual(Object.keys(en).sort(), Object.keys(fr).sort());
@@ -82,14 +82,14 @@ test('paragraph output and occurrence state survive installed clipboard inside A
   const definition = fixtureFiles.sourceParams().inlineImages[3];
   const text = '<p><strong>Before</strong></p><p><span class="papijo-inline-image" data-papijo-inline-image-id="' + definition.id +
     '" data-papijo-inline-image-style="alignRight" data-papijo-inline-image-width="55.5" data-papijo-inline-image-link="https://example.org/image"></span></p><p>After</p><p></p>';
-  const child = { library: 'H5P.AdvancedTextPapiJo 1.2', subContentId: 'paragraph-child', params: { text, inlineImages: [definition] } };
-  const column = { library: 'H5P.ColumnPapiJo 1.20', params: { content: [{ content: child, useSeparator: 'auto' }] } };
-  const bookSemantics = JSON.parse(fs.readFileSync(path.join(fixtureFiles.environment, 'libraries/H5P.InteractiveBookPapiJo-1.16/semantics.json')));
+  const child = { library: 'H5P.AdvancedTextPapiJo 1.3', subContentId: 'paragraph-child', params: { text, inlineImages: [definition] } };
+  const column = { library: 'H5P.ColumnPapiJo 1.21', params: { content: [{ content: child, useSeparator: 'auto' }] } };
+  const bookSemantics = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../papi-jo-h5p-interactivebook/semantics.json')));
   assert.ok(bookSemantics.find(field => field.name === 'chapters').field.fields.find(field => field.name === 'chapter').options.includes(column.library));
   const hosts = [
-    { library: 'H5P.AccordionPapiJo 1.1', params: { panels: [{ title: 'Paragraph child', content: child }] } },
+    { library: 'H5P.AccordionPapiJo 1.2', params: { panels: [{ title: 'Paragraph child', content: child }] } },
     column,
-    { library: 'H5P.InteractiveBookPapiJo 1.16', params: { chapters: [{ chapter: column }] } }
+    { library: 'H5P.InteractiveBookPapiJo 1.17', params: { chapters: [column] } }
   ];
   function findChild(value) {
     if (!value || typeof value !== 'object') { return undefined; }

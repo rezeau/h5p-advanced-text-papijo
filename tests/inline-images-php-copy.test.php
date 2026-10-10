@@ -15,9 +15,21 @@ function copyCheck(bool $condition, string $message): void {
 final class InlineCopyCore {
   public $fs, $relativePathRegExp;
   public function loadLibrarySemantics($name, $major, $minor) {
-    $file = $name === 'H5P.AdvancedTextPapiJo' ? __DIR__ . '/../semantics.json' :
-      'C:/my_first_h5p_environment/libraries/' . $name . '-' . $major . '.' . $minor . '/semantics.json';
-    return json_decode(file_get_contents($file));
+    $root = dirname(__DIR__);
+    $candidates = array(
+      'H5P.AdvancedTextPapiJo' => array($root, 1, 3, 0),
+      'H5P.AccordionPapiJo' => array(dirname($root) . '/papi-jo-h5p-accordion', 1, 2, 0),
+      'H5P.ColumnPapiJo' => array(dirname($root) . '/papi-jo-h5p-column', 1, 21, 0),
+      'H5P.InteractiveBookPapiJo' => array(dirname($root) . '/papi-jo-h5p-interactivebook', 1, 17, 0)
+    );
+    copyCheck(isset($candidates[$name]), 'Actual candidate semantics required: ' . $name);
+    list($repository, $expectedMajor, $expectedMinor, $expectedPatch) = $candidates[$name];
+    $manifest = json_decode(file_get_contents($repository . '/library.json'), true, 512, JSON_THROW_ON_ERROR);
+    copyCheck($manifest['machineName'] === $name &&
+      array($manifest['majorVersion'], $manifest['minorVersion'], $manifest['patchVersion']) === array($expectedMajor, $expectedMinor, $expectedPatch) &&
+      (int) $major === $expectedMajor && (int) $minor === $expectedMinor,
+      'Requested lifecycle library must match actual public candidate: ' . $name);
+    return json_decode(file_get_contents($repository . '/semantics.json'), false, 512, JSON_THROW_ON_ERROR);
   }
 }
 final class InlineCopyStorage {
@@ -81,15 +93,15 @@ try {
       foreach (array_merge($child->inlineImages, $child->tooltipImages) as $entry) {
         $entry->image->path = $prefix . $entry->image->path;
       }
-      $library = array('name' => 'H5P.AdvancedTextPapiJo', 'majorVersion' => 1, 'minorVersion' => 2);
+      $library = array('name' => 'H5P.AdvancedTextPapiJo', 'majorVersion' => 1, 'minorVersion' => 3);
       $params = $child;
-      $action = (object) array('library' => 'H5P.AdvancedTextPapiJo 1.2', 'params' => $child, 'subContentId' => 'new-child-id');
+      $action = (object) array('library' => 'H5P.AdvancedTextPapiJo 1.3', 'params' => $child, 'subContentId' => 'new-child-id');
       if ($container === 'accordion') {
-        $library = array('name' => 'H5P.AccordionPapiJo', 'majorVersion' => 1, 'minorVersion' => 1);
+        $library = array('name' => 'H5P.AccordionPapiJo', 'majorVersion' => 1, 'minorVersion' => 2);
         $params = (object) array('panels' => array((object) array('title' => 'Copied child', 'content' => $action)));
       }
       elseif ($container === 'column') {
-        $library = array('name' => 'H5P.ColumnPapiJo', 'majorVersion' => 1, 'minorVersion' => 20);
+        $library = array('name' => 'H5P.ColumnPapiJo', 'majorVersion' => 1, 'minorVersion' => 21);
         $params = (object) array('content' => array((object) array('content' => $action)));
       }
       $editor->processParameters($destination, $library, $params);
@@ -133,8 +145,8 @@ try {
           $entry->image->path = '../' . $destination . '/' . $entry->image->path;
         }
         $secondParent = (object) array('panels' => array((object) array('title' => 'Second copy', 'content' =>
-          (object) array('library' => 'H5P.AdvancedTextPapiJo 1.2', 'params' => $secondChild))));
-        $editor->processParameters(200, array('name' => 'H5P.AccordionPapiJo', 'majorVersion' => 1, 'minorVersion' => 1), $secondParent);
+          (object) array('library' => 'H5P.AdvancedTextPapiJo 1.3', 'params' => $secondChild))));
+        $editor->processParameters(200, array('name' => 'H5P.AccordionPapiJo', 'majorVersion' => 1, 'minorVersion' => 2), $secondParent);
         copyCheck($secondChild->text === $source->text, 'Second child copy must preserve occurrence presentations');
         foreach (array_merge($secondChild->inlineImages, $secondChild->tooltipImages) as $entry) {
           copyCheck(strpos($entry->image->path, 'images/') === 0 && is_file($temporary . '/content/200/' . $entry->image->path),
@@ -157,7 +169,7 @@ try {
     foreach (array_merge($oldChild->inlineImages, $oldChild->tooltipImages) as $entry) {
       $entry->image->path = '../42/' . $entry->image->path;
     }
-    $library = array('name' => 'H5P.AdvancedTextPapiJo', 'majorVersion' => 1, 'minorVersion' => 2);
+    $library = array('name' => 'H5P.AdvancedTextPapiJo', 'majorVersion' => 1, 'minorVersion' => 3);
     $editor->processParameters($destination, $library, $oldChild);
     $child = json_decode(json_encode($oldChild));
     $A = $child->inlineImages[0];
@@ -169,20 +181,20 @@ try {
     $child->text = '<p><span class="papijo-inline-image" data-papijo-inline-image-id="php-replacement-B" data-papijo-inline-image-style="alignLeft"></span></p>';
     $beforeA = hash_file('sha256', $temporary . '/content/' . $destination . '/' . $A->image->path);
     $wrap = function ($text) use ($container) {
-      $action = (object) array('library' => 'H5P.AdvancedTextPapiJo 1.2', 'params' => $text);
+      $action = (object) array('library' => 'H5P.AdvancedTextPapiJo 1.3', 'params' => $text);
       if ($container === 'accordion') {
         return (object) array('panels' => array((object) array('title' => 'Replacement', 'content' => $action)));
       }
       $column = (object) array('content' => array((object) array('content' => $action)));
       if ($container === 'column') { return $column; }
       if ($container === 'book') {
-        return (object) array('chapters' => array((object) array('library' => 'H5P.ColumnPapiJo 1.20', 'params' => $column)));
+        return (object) array('chapters' => array((object) array('library' => 'H5P.ColumnPapiJo 1.21', 'params' => $column)));
       }
       return $text;
     };
-    if ($container === 'accordion') { $library = array('name' => 'H5P.AccordionPapiJo', 'majorVersion' => 1, 'minorVersion' => 1); }
-    if ($container === 'column') { $library = array('name' => 'H5P.ColumnPapiJo', 'majorVersion' => 1, 'minorVersion' => 20); }
-    if ($container === 'book') { $library = array('name' => 'H5P.InteractiveBookPapiJo', 'majorVersion' => 1, 'minorVersion' => 16); }
+    if ($container === 'accordion') { $library = array('name' => 'H5P.AccordionPapiJo', 'majorVersion' => 1, 'minorVersion' => 2); }
+    if ($container === 'column') { $library = array('name' => 'H5P.ColumnPapiJo', 'majorVersion' => 1, 'minorVersion' => 21); }
+    if ($container === 'book') { $library = array('name' => 'H5P.InteractiveBookPapiJo', 'majorVersion' => 1, 'minorVersion' => 17); }
     $params = $wrap($child);
     $editor->processParameters($destination, $library, $params, $library, $wrap($oldChild));
     copyCheck($B->image->path === $physicalB->image->path, 'Replacement B must localize from foreign content');
@@ -236,25 +248,25 @@ try {
       $child->text .= '</p>';
     }
     $linkedHtml = $child->text;
-    $linkValidator->validateText($child->text, $core->loadLibrarySemantics('H5P.AdvancedTextPapiJo', 1, 2)[0]);
+    $linkValidator->validateText($child->text, $core->loadLibrarySemantics('H5P.AdvancedTextPapiJo', 1, 3)[0]);
     copyCheck($child->text === $linkedHtml, 'PHP filtering must preserve occurrence links/query/fragment');
     foreach (array_merge($child->inlineImages, $child->tooltipImages) as $entry) {
       $entry->image->path = '../42/' . $entry->image->path;
     }
-    $library = array('name' => 'H5P.AdvancedTextPapiJo', 'majorVersion' => 1, 'minorVersion' => 2);
-    $action = (object) array('library' => 'H5P.AdvancedTextPapiJo 1.2', 'params' => $child, 'subContentId' => 'linked-child');
+    $library = array('name' => 'H5P.AdvancedTextPapiJo', 'majorVersion' => 1, 'minorVersion' => 3);
+    $action = (object) array('library' => 'H5P.AdvancedTextPapiJo 1.3', 'params' => $child, 'subContentId' => 'linked-child');
     $params = $child;
     if ($container === 'accordion') {
-      $library = array('name' => 'H5P.AccordionPapiJo', 'majorVersion' => 1, 'minorVersion' => 1);
+      $library = array('name' => 'H5P.AccordionPapiJo', 'majorVersion' => 1, 'minorVersion' => 2);
       $params = (object) array('panels' => array((object) array('title' => 'Linked child', 'content' => $action)));
     }
     if ($container === 'column' || $container === 'book') {
-      $library = array('name' => 'H5P.ColumnPapiJo', 'majorVersion' => 1, 'minorVersion' => 20);
+      $library = array('name' => 'H5P.ColumnPapiJo', 'majorVersion' => 1, 'minorVersion' => 21);
       $params = (object) array('content' => array((object) array('content' => $action)));
     }
     if ($container === 'book') {
-      $library = array('name' => 'H5P.InteractiveBookPapiJo', 'majorVersion' => 1, 'minorVersion' => 16);
-      $params = (object) array('chapters' => array((object) array('library' => 'H5P.ColumnPapiJo 1.20', 'params' => $params)));
+      $library = array('name' => 'H5P.InteractiveBookPapiJo', 'majorVersion' => 1, 'minorVersion' => 17);
+      $params = (object) array('chapters' => array((object) array('library' => 'H5P.ColumnPapiJo 1.21', 'params' => $params)));
     }
     $editor->processParameters($destination, $library, $params);
     $editor->processParameters($destination, $library, $params, $library, json_decode(json_encode($params)));

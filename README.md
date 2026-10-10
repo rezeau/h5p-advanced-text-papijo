@@ -3,8 +3,10 @@
 An enhanced version of the H5P Advanced Text library, with support for
 author-defined tooltips and additional text presentation features.
 
-Current runtime release: `H5P.AdvancedTextPapiJo 1.2.6`. The companion tooltip
-editor remains `H5PEditor.AdvancedTextPapiJoTooltip 1.1.2`.
+Prepared release candidate: `H5P.AdvancedTextPapiJo 1.3.0`, with companion
+editor `H5PEditor.AdvancedTextPapiJoTooltip 1.2.0` (editor dependency `1.2`).
+This candidate has not been packaged or published. See the
+[release-candidate audit](tests/RELEASE-CANDIDATE-1.3.0.md).
 
 Tooltips can be created, edited, and removed directly in the H5P editor.
 Tooltip text supports a restricted set of inline formatting elements: `<em>`,
@@ -18,7 +20,37 @@ must cover every semantics entry, including nested list and group fields.
 The separate tooltip editor retains its English and French `libraryStrings`
 under `editor/language/`.
 
-## Managed tooltip image development notes
+## Managed inline images in 1.3.0
+
+Authors can insert managed inline images with required ALT, edit ALT, choose
+Inline / Wrap left / Wrap right, replace an image, and add an absolute HTTP/HTTPS
+image link. Percentage resizing provides corner handles, keyboard adjustment
+and Reset size. Contextual Paragraph Actions insert a paragraph Before/After
+an isolated image or isolate one managed image from a mixed ordinary root
+paragraph. Image-edge controls improve access to those actions.
+
+Occurrence-local plain-text captions support Add/Edit/Remove and remain outside
+image links. **Add Caption requires an eligible image-only ordinary root
+paragraph; mixed text and table contexts are not supported for caption creation.**
+Required ALT remains independent of the caption. Picker/editor refinements,
+accessible keyboard behavior, copy/paste, filtering and file lifecycle are
+covered by the established verification suite.
+
+Existing 1.2 rich text and tooltip content needs no parameter migration or
+synthetic `inlineImages` list. Prepared parent compatibility is AccordionPapiJo
+1.2.0, ColumnPapiJo 1.21.0 and InteractiveBookPapiJo 1.17.0 through Column 1.21.
+The public chain targets AdvancedText 1.3, Accordion 1.2 and Column 1.21;
+Accordion 1.1.7 and private recovery 1.1.8 are not public release candidates.
+Raw unmanaged images, image-link target/new-window controls and Timeline-specific
+integration remain unsupported. Retained image definitions are not pruned when
+an occurrence is deleted or replaced.
+CLI exports of copied foreign image references remain non-self-contained until
+files have been localized; PHP save/copy lifecycle coverage is described below.
+
+## Implementation reports and tooltip images
+
+The linked phase reports preserve historical development snapshots; their
+version and uncommitted-state notes do not describe this release candidate.
 
 Managed inline-image Phase 1 development is documented in
 [the implementation report and manual checklist](tests/INLINE-IMAGES-PHASE1.md).
@@ -28,7 +60,7 @@ markers. Definitions are retained conservatively through deletion and undo.
 Phase 2 adds native CKEditor inline-image editing, Insert image, contextual
 Alternative text, and managed alt history. See [the Phase 2 report and browser
 checklist](tests/INLINE-IMAGES-PHASE2.md). Storage and runtime resolution remain
-unchanged; the development work is uncommitted.
+unchanged.
 
 Phase 3 adds native contextual Inline, Wrap left, and Wrap right controls while
 keeping managed images inline-only. Presentation belongs to each HTML occurrence;
@@ -58,7 +90,7 @@ These structural actions preserve image links, ALT, wrapping and percentage size
 Lists, table cells, headings, soft breaks and multiple-image paragraphs are deferred.
 See the [Paragraph actions scope and verification](tests/INLINE-IMAGES-PARAGRAPH.md).
 
-Optional plain-text captions are an uncommitted development checkpoint. They
+Optional plain-text captions are included in the release candidate. They
 belong to managed image occurrences, use one contextual Add/Edit form, preserve
 required ALT and managed files, and keep captions outside image links. Caption
 creation requires an eligible image-only root paragraph; existing captions can
@@ -87,8 +119,8 @@ missing-image tooltip until an image is selected there.
 This Git repository contains the source for two separately installed H5P
 libraries:
 
-- `H5P.AdvancedTextPapiJo-1.1`, sourced from the repository root.
-- `H5PEditor.AdvancedTextPapiJoTooltip-1.0`, sourced from `editor/`.
+- `H5P.AdvancedTextPapiJo-1.3`, sourced from the repository root.
+- `H5PEditor.AdvancedTextPapiJoTooltip-1.2`, sourced from `editor/`.
 
 The editor library remains in the same repository because its CKEditor support
 is developed and tested in lockstep with AdvancedTextPapiJo. H5P still resolves
@@ -96,9 +128,9 @@ it as an independent editor dependency, so the CLI development environment
 needs two sibling library junctions:
 
 ```text
-<H5P CLI root>\libraries\H5P.AdvancedTextPapiJo-1.1
+<H5P CLI root>\libraries\H5P.AdvancedTextPapiJo-1.3
   -> <repository root>
-<H5P CLI root>\libraries\H5PEditor.AdvancedTextPapiJoTooltip-1.0
+<H5P CLI root>\libraries\H5PEditor.AdvancedTextPapiJoTooltip-1.2
   -> <repository root>\editor
 ```
 

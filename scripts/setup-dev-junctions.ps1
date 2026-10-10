@@ -117,12 +117,12 @@ Confirm-LibraryManifest `
   -ManifestPath $runtimeManifest `
   -ExpectedMachineName 'H5P.AdvancedTextPapiJo' `
   -ExpectedMajorVersion 1 `
-  -ExpectedMinorVersion 1
+  -ExpectedMinorVersion 3
 Confirm-LibraryManifest `
   -ManifestPath $editorManifest `
   -ExpectedMachineName 'H5PEditor.AdvancedTextPapiJoTooltip' `
   -ExpectedMajorVersion 1 `
-  -ExpectedMinorVersion 0
+  -ExpectedMinorVersion 2
 
 $normalizedCliRoot = Get-NormalizedPath -Path $H5pCliRoot
 $cliRootItem = Get-Item -Force -LiteralPath $normalizedCliRoot -ErrorAction SilentlyContinue
@@ -144,10 +144,10 @@ else {
 }
 
 Ensure-DevelopmentJunction `
-  -JunctionPath (Join-Path $librariesRoot 'H5P.AdvancedTextPapiJo-1.1') `
+  -JunctionPath (Join-Path $librariesRoot 'H5P.AdvancedTextPapiJo-1.3') `
   -TargetPath $repositoryRoot
 Ensure-DevelopmentJunction `
-  -JunctionPath (Join-Path $librariesRoot 'H5PEditor.AdvancedTextPapiJoTooltip-1.0') `
+  -JunctionPath (Join-Path $librariesRoot 'H5PEditor.AdvancedTextPapiJoTooltip-1.2') `
   -TargetPath $editorRoot
 
 Write-Output 'Development junction setup complete.'
